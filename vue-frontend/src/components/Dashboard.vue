@@ -128,7 +128,7 @@ const loadingUsers = ref(true);
 // Methods
 const handleLogOut = async () => {
   try {
-    await fetch("http://localhost:3000/api/penggunas/logout", {
+    await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/logout`, {
       method: "POST",
       credentials: "include"
     });
@@ -139,7 +139,7 @@ const handleLogOut = async () => {
 };
 
 const getUser = async () => {
-  const res = await fetch("http://localhost:3000/api/penggunas/me", {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/me`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -151,7 +151,7 @@ const getUser = async () => {
 };
 
 const getAllUsers = async () => {
-  const res = await fetch("http://localhost:3000/api/penggunas", {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -160,7 +160,7 @@ const getAllUsers = async () => {
 };
 
 const getAllChannels = async () => {
-  const res = await fetch("http://localhost:3000/api/channels", {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/channels`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -173,7 +173,7 @@ const getMemberChannels = async () => {
     { where: { pengguna_id: { equals: user_id.value } } },
     { addQueryPrefix: true }
   );
-  const res = await fetch(`http://localhost:3000/api/memberships${query}`, {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/memberships${query}`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -182,7 +182,7 @@ const getMemberChannels = async () => {
 
 const createChannel = async () => {
   if (!newChannelName.value.trim()) return alert("Enter a name");
-  const res = await fetch("http://localhost:3000/api/channels", {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/channels`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -195,7 +195,7 @@ const createChannel = async () => {
   const newChannel = data.doc;
 
   // auto join
-  await fetch("http://localhost:3000/api/memberships", {
+  await fetch(`${import.meta.env.VITE_API_URL}/api/memberships`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -211,7 +211,7 @@ const createChannel = async () => {
 };
 
 const joinChannel = async (id) => {
-  await fetch("http://localhost:3000/api/memberships", {
+  await fetch(`${import.meta.env.VITE_API_URL}/api/memberships`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

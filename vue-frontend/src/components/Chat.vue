@@ -3,7 +3,7 @@
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
       <!-- Back button -->
-      <<button class="back-btn" @click="$router.push('/dashboard')">← Back to Dashboard</button>
+      <button class="back-btn" @click="$router.push('/dashboard')">← Back to Dashboard</button>
 
 
       <div class="user-info">
@@ -100,7 +100,7 @@ const getMessages = async () => {
   const stringifiedQuery = qs.stringify({ where: query }, { addQueryPrefix: true });
 
   try {
-    const resp = await fetch(`http://localhost:3000/api/chats${stringifiedQuery}`, { credentials: 'include' });
+    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/chats${stringifiedQuery}`, { credentials: 'include' });
     const data = await resp.json();
     messages.value = data.docs
       .map(msg => ({
@@ -119,12 +119,12 @@ const getMessages = async () => {
 const getUserInfo = async () => {
   user_id.value = route.params.user_id;
 
-  const partnerRes = await fetch(`http://localhost:3000/api/penggunas/${user_id.value}`, { credentials: 'include' });
+  const partnerRes = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/${user_id.value}`, { credentials: 'include' });
   const partnerData = await partnerRes.json();
   user_username.value = partnerData.username;
   user_email.value = partnerData.email;
 
-  const meRes = await fetch('http://localhost:3000/api/penggunas/me', { credentials: 'include' });
+  const meRes = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/me`, { credentials: 'include' });
   const meData = await meRes.json();
   me_id.value = meData.user.id;
   me_username.value = meData.user.username;
@@ -138,7 +138,7 @@ const sendMessage = async () => {
   if (!messageInput.value.trim()) return;
 
   try {
-    const resp = await fetch('http://localhost:3000/api/chats', {
+    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/chats`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -177,7 +177,7 @@ onBeforeUnmount(() => clearInterval(intervalId));
   height: 80vh;
   max-width: 1200px;
   margin: 2rem auto;
-  background: #f2f4f8;
+  background: #f9f9f9; /* light background */
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 18px rgba(0,0,0,0.1);
@@ -186,15 +186,16 @@ onBeforeUnmount(() => clearInterval(intervalId));
 /* Sidebar */
 .sidebar {
   width: 280px;
-  background-color: #1e293b;
-  color: white;
+  background-color: #ffffff; /* light sidebar */
+  color: #333;
   display: flex;
   flex-direction: column;
   padding: 1.5rem;
   transition: transform 0.3s ease-in-out;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.05);
 }
 .back-btn {
-  background: #2563eb;
+  background: #4caf50;
   border: none;
   color: white;
   padding: 0.5rem 0.8rem;
@@ -203,29 +204,29 @@ onBeforeUnmount(() => clearInterval(intervalId));
   margin-bottom: 1rem;
   cursor: pointer;
 }
-.back-btn:hover { background: #1d4ed8; }
+.back-btn:hover { background: #45a049; }
 .sidebar .sidebar-close {
   display: none;
   margin-top: 2rem;
-  background: #dc2626;
+  background: #ef4444;
   border: none;
   border-radius: 6px;
   padding: 0.5rem 0.8rem;
   cursor: pointer;
 }
-.sidebar .sidebar-close:hover { background: #b91c1c; }
+.sidebar .sidebar-close:hover { background: #dc2626; }
 
 .user-info { text-align: center; margin-bottom: 2rem; }
-.me-name { font-size: 1.4rem; margin-bottom: 0.3rem; }
-.me-email { font-size: 0.85rem; color: #cbd5e1; }
-.chat-partner { background-color: #334155; padding: 1rem; border-radius: 8px; text-align: center; }
-.partner-name { font-weight: 600; color: #f1f5f9; }
+.me-name { font-size: 1.4rem; margin-bottom: 0.3rem; color: #111827; }
+.me-email { font-size: 0.85rem; color: #6b7280; }
+.chat-partner { background-color: #e0e7ff; padding: 1rem; border-radius: 8px; text-align: center; }
+.partner-name { font-weight: 600; color: #1e3a8a; }
 
 /* Chat main */
-.chat-main { flex: 1; display: flex; flex-direction: column; background-color: #e9eef6; }
+.chat-main { flex: 1; display: flex; flex-direction: column; background-color: #f3f4f6; }
 .chat-header {
   padding: 1rem;
-  background-color: white;
+  background-color: #ffffff;
   border-bottom: 1px solid #ddd;
   font-weight: 600;
   font-size: 1.2rem;
@@ -239,18 +240,19 @@ onBeforeUnmount(() => clearInterval(intervalId));
   background: none;
   border: none;
   cursor: pointer;
+  color: #111827;
 }
 
 /* Chat body & footer */
 .chat-body { flex: 1; overflow-y: auto; padding: 1rem 2rem; display: flex; flex-direction: column; gap: 0.8rem; }
 .chat-message { max-width: 60%; padding: 0.8rem 1rem; border-radius: 12px; word-wrap: break-word; font-size: 0.95rem; position: relative; }
-.from-me { align-self: flex-end; background-color: #0077ff; color: white; border-bottom-right-radius: 0; }
-.from-them { align-self: flex-start; background-color: white; border-bottom-left-radius: 0; color: #333; }
+.from-me { align-self: flex-end; background-color: #d1fae5; color: #065f46; border-bottom-right-radius: 0; }
+.from-them { align-self: flex-start; background-color: #ffffff; border-bottom-left-radius: 0; color: #111827; border: 1px solid #e5e7eb; }
 .chat-time { font-size: 0.75rem; opacity: 0.6; position: absolute; bottom: -18px; right: 10px; }
-.chat-footer { display: flex; padding: 1rem; background-color: white; border-top: 1px solid #ddd; }
-.chat-input { flex: 1; padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; margin-right: 0.8rem; }
-.send-btn { background-color: #0077ff; color: white; border: none; border-radius: 8px; padding: 0 1.5rem; cursor: pointer; transition: background 0.2s; font-weight: 500; }
-.send-btn:hover { background-color: #005fcc; }
+.chat-footer { display: flex; padding: 1rem; background-color: #ffffff; border-top: 1px solid #ddd; }
+.chat-input { flex: 1; padding: 0.7rem 1rem; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; margin-right: 0.8rem; background-color: #f9f9f9; color: #111827; }
+.send-btn { background-color: #4caf50; color: white; border: none; border-radius: 8px; padding: 0 1.5rem; cursor: pointer; transition: background 0.2s; font-weight: 500; }
+.send-btn:hover { background-color: #45a049; }
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
@@ -261,28 +263,6 @@ onBeforeUnmount(() => clearInterval(intervalId));
     border-radius: 0;
   }
 
-  /* Sidebar collapsible */
-  /* Sidebar button always visible when sidebar is open */
-.sidebar .back-btn {
-  display: block;
-  background: #2563eb;
-  border: none;
-  color: white;
-  padding: 0.5rem 0.8rem;
-  border-radius: 6px;
-  font-weight: 500;
-  margin-bottom: 1rem;
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-}
-
-.sidebar .back-btn:hover {
-  background: #1d4ed8;
-}
-
-/* Ensure sidebar is visible when open on mobile */
-@media (max-width: 768px) {
   .sidebar {
     position: fixed;
     top: 0;
@@ -291,45 +271,19 @@ onBeforeUnmount(() => clearInterval(intervalId));
     transform: translateX(-100%);
     width: 250px;
     padding: 1rem;
-    box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
     z-index: 50;
     transition: transform 0.3s ease-in-out;
+    background-color: #ffffff;
   }
-
   .sidebar.open {
     transform: translateX(0);
   }
+  .sidebar .sidebar-close { display: block; }
+  .menu-toggle { display: inline-block; color: #111827; }
 
-  /* Show close button on mobile */
-  .sidebar .sidebar-close {
-    display: block;
-    margin-top: 1rem;
-    background: #dc2626;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem 0.8rem;
-    cursor: pointer;
-  }
-}
-
-
-  /* Chat main adjustments */
-  .chat-main {
-    flex: 1;
-    margin-left: 0;
-  }
-  .chat-header {
-    justify-content: flex-start;
-  }
-  .menu-toggle {
-    display: inline-block;
-  }
-
-  .chat-body {
-    padding: 1rem;
-  }
-  .chat-message {
-    max-width: 80%;
-  }
+  .chat-main { flex: 1; margin-left: 0; }
+  .chat-body { padding: 1rem; }
+  .chat-message { max-width: 80%; }
 }
 </style>

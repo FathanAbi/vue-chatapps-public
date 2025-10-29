@@ -25,8 +25,16 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  cors: ['http://localhost:5173'], // allows all origins
-  csrf: ['http://localhost:5173'],
+  cors: [
+    'http://103.103.21.102:50011', // Vue frontend
+    'http://localhost:50011',      // local testing
+    'http://localhost:5173'        // Vite dev mode
+  ],
+  csrf: [
+    'http://103.103.21.102:50011',
+    'http://localhost:50011',
+    'http://localhost:5173'
+  ],
   collections: [Users, Media, Penggunas, Chats, Channels,
     Memberships,
     Messages],

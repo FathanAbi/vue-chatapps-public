@@ -61,7 +61,7 @@ export default {
   methods: {
     async register() {
       try {
-        const resp = await fetch("http://localhost:3000/api/penggunas", {
+        const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas`, {
           method: "POST",
           credentials: "include",
           headers: {

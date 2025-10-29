@@ -49,7 +49,7 @@ import qs from 'qs'
             async getChannelInfo(){
                 this.channel_id = this.$route.params.channel_id
                 try {
-                    const resp = await fetch(`http://localhost:3000/api/channels/${this.channel_id}`, {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/channels/${this.channel_id}`, {
                         method: "GET",
                         credentials: "include",
                         headers: {
@@ -77,7 +77,7 @@ import qs from 'qs'
             },
             async getUser(){
                 try {
-                    const resp = await fetch("http://localhost:3000/api/penggunas/me", {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/me`, {
                         method: "GET",
                         credentials: "include",
                         headers: {
@@ -102,7 +102,7 @@ import qs from 'qs'
             },
             async join(){
                 try {
-                    const resp = await fetch("http://localhost:3000/api/memberships", {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/memberships`, {
                         method: "POST",
                         credentials: "include",
                         headers: {
@@ -147,7 +147,7 @@ import qs from 'qs'
                 )
 
                 try {
-                        const resp = await fetch(`http://localhost:3000/api/messages${stringifiedQuery}`, {
+                        const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/messages${stringifiedQuery}`, {
                             method: "GET",
                             credentials: "include",
                             headers: {
@@ -179,7 +179,7 @@ import qs from 'qs'
             },
             async sendMessage(){
                 try {
-                    const resp = await fetch("http://localhost:3000/api/messages", {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/messages`, {
                         method: "POST",
                         credentials: "include",
                         headers: {
@@ -212,7 +212,7 @@ import qs from 'qs'
             },
             async changeName(){
                 try {
-                    const resp = await fetch(`http://localhost:3000/api/channels/${this.channel_id}`, {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/channels/${this.channel_id}`, {
                         method: "PATCH",
                         credentials: "include",
                         headers: {

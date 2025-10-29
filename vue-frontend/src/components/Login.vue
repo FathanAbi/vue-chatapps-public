@@ -49,7 +49,7 @@ export default {
   methods: {
     async login() {
       try {
-        const resp = await fetch("http://localhost:3000/api/penggunas/login", {
+        const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/login`, {
           method: "POST",
           credentials: "include",
           headers: {

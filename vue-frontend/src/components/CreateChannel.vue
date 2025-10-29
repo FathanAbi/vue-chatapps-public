@@ -24,7 +24,7 @@
         methods: {
             async getUSer() {
                 try {
-                    const resp = await fetch("http://localhost:3000/api/penggunas/me", {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/me`, {
                         method: "GET",
                         credentials: "include",
                         headers: {
@@ -51,7 +51,7 @@
                 console.log(this.user_id)
 
                 try {
-                    const resp = await fetch("http://localhost:3000/api/channels", {
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/channels`, {
                         method: "POST",
                         credentials: "include",
                         headers: {

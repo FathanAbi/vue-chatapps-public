@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 
 interface Channel {
@@ -27,7 +27,7 @@ const sidebarOpen = ref(false)
 
 // ✅ Fetch user info
 async function fetchUser() {
-  const resp = await fetch('http://localhost:3000/api/penggunas/me', {
+  const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/me`, {
     credentials: 'include',
   })
   const data = await resp.json()
@@ -36,7 +36,7 @@ async function fetchUser() {
 
 // ✅ Fetch all channels
 async function fetchChannels() {
-  const resp = await fetch('http://localhost:3000/api/channels', {
+  const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/channels`, {
     credentials: 'include',
   })
   const data = await resp.json()
@@ -55,7 +55,7 @@ async function switchChannel(channel: Channel) {
 async function checkMembership(channelId: string) {
   if (!userId.value) return
   const resp = await fetch(
-    `http://localhost:3000/api/memberships?where[pengguna_id][equals]=${userId.value}&where[channel_id][equals]=${channelId}`,
+    `${import.meta.env.VITE_API_URL}/api/memberships?where[pengguna_id][equals]=${userId.value}&where[channel_id][equals]=${channelId}`,
     { credentials: 'include' }
   )
   const data = await resp.json()
@@ -65,7 +65,7 @@ async function checkMembership(channelId: string) {
 // ✅ Fetch messages
 async function fetchMessages(channelId: string) {
   const resp = await fetch(
-    `http://localhost:3000/api/messages?where[Channel][equals]=${channelId}&sort=createdAt&depth=1`,
+    `${import.meta.env.VITE_API_URL}/api/messages?where[Channel][equals]=${channelId}&sort=createdAt&depth=1`,
     { credentials: 'include' }
   )
   const data = await resp.json()
@@ -86,7 +86,7 @@ async function fetchMessages(channelId: string) {
 async function sendMessage() {
   if (!newMessage.value.trim() || !currentChannel.value || !userId.value) return
 
-  const resp = await fetch('http://localhost:3000/api/messages', {
+  const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/messages`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -108,7 +108,7 @@ async function sendMessage() {
 // ✅ Join channel
 async function joinChannel() {
   if (!currentChannel.value || !userId.value) return
-  const resp = await fetch('http://localhost:3000/api/memberships', {
+  const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/memberships`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -125,7 +125,7 @@ async function createChannel() {
   const name = prompt('Enter new channel name:')
   if (!name || !userId.value) return
 
-  const resp = await fetch('http://localhost:3000/api/channels', {
+  const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/channels`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -140,7 +140,7 @@ async function createChannel() {
   const channelData = await resp.json()
   const newChannel = channelData.doc
 
-  await fetch('http://localhost:3000/api/memberships', {
+  await fetch(`${import.meta.env.VITE_API_URL}/api/memberships`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -168,9 +168,24 @@ function goToDashboard() {
   router.push('/dashboard')
 }
 
+let refreshInterval: number | null = null // store interval ID
+
 onMounted(async () => {
   await fetchUser()
   await fetchChannels()
+
+  // Auto-refresh messages every 3 seconds
+  refreshInterval = window.setInterval(() => {
+    if (currentChannel.value) {
+      fetchMessages(currentChannel.value.id)
+    }
+  }, 3000) // adjust interval as needed
+})
+
+onBeforeUnmount(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+  }
 })
 </script>
 
@@ -242,18 +257,19 @@ onMounted(async () => {
 .chatroom-container {
   display: flex;
   height: 100vh;
-  background: #1e1e2f;
-  color: #f1f1f1;
+  background: #f9f9f9; /* light background */
+  color: #333; /* dark text */
   overflow: hidden;
 }
 
 /* ===== Sidebar ===== */
 .sidebar {
   width: 260px;
-  background: #2b2b3d;
+  background: #ffffff; /* sidebar light */
   padding: 1rem;
   display: flex;
   flex-direction: column;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
   transition: transform 0.3s ease;
 }
 .sidebar-header {
@@ -265,7 +281,7 @@ onMounted(async () => {
   display: none;
   background: none;
   border: none;
-  color: #fff;
+  color: #333;
   font-size: 1.2rem;
 }
 .channel-list {
@@ -281,12 +297,13 @@ onMounted(async () => {
   cursor: pointer;
   margin-bottom: 4px;
   transition: background 0.2s;
+  color: #333;
 }
 .channel-list li:hover {
-  background: #3a3a50;
+  background: #f0f0f0;
 }
 .channel-list li.active {
-  background: #4a4a6a;
+  background: #e0e0e0;
   font-weight: bold;
 }
 .create-btn {
@@ -310,10 +327,11 @@ onMounted(async () => {
 }
 .chat-header {
   padding: 1rem;
-  background: #2b2b3d;
+  background: #ffffff;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid #ddd;
 }
 .header-left {
   display: flex;
@@ -322,18 +340,18 @@ onMounted(async () => {
 }
 .menu-btn {
   display: none;
-  background: #3a3a50;
+  background: #f0f0f0;
   border: none;
-  color: #fff;
+  color: #333;
   padding: 0.5rem;
   border-radius: 6px;
   cursor: pointer;
 }
 .back-btn,
 .join-btn {
-  background: #4a4a6a;
+  background: #e0e0e0;
   border: none;
-  color: #fff;
+  color: #333;
   padding: 0.5rem 1rem;
   border-radius: 8px;
   cursor: pointer;
@@ -341,7 +359,7 @@ onMounted(async () => {
 }
 .back-btn:hover,
 .join-btn:hover {
-  background: #5a5a7a;
+  background: #d0d0d0;
 }
 
 /* ===== Messages ===== */
@@ -357,21 +375,21 @@ onMounted(async () => {
   max-width: 60%;
   padding: 0.8rem;
   border-radius: 10px;
-  background: #3a3a50;
+  background: #f0f0f0;
+  color: #333;
 }
 .message.own {
   align-self: flex-end;
-  background: #4a4a6a;
+  background: #d0f0d0; /* light green for own messages */
 }
 .message-info {
   font-size: 0.8rem;
-  color: #ccc;
+  color: #666;
   display: flex;
   justify-content: space-between;
   margin-bottom: 4px;
 }
 .content {
-  color: #fff;
   word-wrap: break-word;
 }
 .empty-chat {
@@ -384,16 +402,17 @@ onMounted(async () => {
 .chat-input {
   display: flex;
   padding: 0.8rem;
-  background: #2b2b3d;
+  background: #ffffff;
+  border-top: 1px solid #ddd;
 }
 .chat-input input {
   flex: 1;
   padding: 0.6rem;
-  border: none;
+  border: 1px solid #ccc;
   border-radius: 6px;
   margin-right: 0.6rem;
-  background: #3a3a50;
-  color: white;
+  background: #f9f9f9;
+  color: #333;
 }
 .chat-input button {
   background: #4caf50;
