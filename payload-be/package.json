@@ -18,20 +18,23 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
   },
   "dependencies": {
-    "@payloadcms/db-mongodb": "^3.70.0",
-    "@payloadcms/next": "^3.70.0",
-    "@payloadcms/payload-cloud": "^3.70.0",
+    "@payloadcms/db-mongodb": "3.70.0",
     "@payloadcms/email-nodemailer": "^3.70.0",
-    "@payloadcms/richtext-lexical": "^3.70.0",
-    "@payloadcms/ui": "^3.70.0",
+    "@payloadcms/next": "3.70.0",
+    "@payloadcms/payload-cloud": "3.70.0",
+    "@payloadcms/richtext-lexical": "3.70.0",
+    "@payloadcms/ui": "3.70.0",
     "cross-env": "^7.0.3",
+    "dompurify": "^3.3.1",
     "dotenv": "16.4.7",
     "graphql": "^16.8.1",
-    "next": "^15.5.0",
-    "payload": "^3.70.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "sharp": "0.34.2"
+    "monaco-editor": "^0.55.1",
+    "next": "15.5.9",
+    "payload": "3.70.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "sharp": "0.34.2",
+    "yjs": "^13.6.29"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
