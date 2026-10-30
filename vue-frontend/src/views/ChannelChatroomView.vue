@@ -1,7 +1,7 @@
 <script setup>
-    import Chatroom from '../components/ChannelChatroom.vue'
+import Chatroom from '../components/ChannelChatroom.vue'
 </script>
 
 <template>
-    <Chatroom />
+  <Chatroom />
 </template>

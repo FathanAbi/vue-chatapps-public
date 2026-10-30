@@ -3,8 +3,8 @@
 > Derived from [`security-audit.md`](./security-audit.md). Every task traces to finding IDs.
 >
 > **Status (2026-10-30):** **A1–A9 are implemented.** The authorization suite is
-> green — 80 integration tests across 8 files against a disposable database — and both
-> applications build. Items that can only be confirmed on a live server, a disposable
+> green — 73 `it` blocks across 8 files (79 test cases; one block is a 7-collection `it.each`),
+> against a disposable database — and both applications build. Items that can only be confirmed on a live server, a disposable
 > database, or the target VPS remain marked as unverified in their acceptance criteria;
 > see the per-task checkboxes and the [Stage A gate checklist](#stage-a-gate-checklist).
 >
@@ -58,7 +58,7 @@ Target state per collection:
 
 **Acceptance criteria.**
 - [x] No access function in `payload-be/src/collections/` returns a bare `() => true`.
-- [x] Anonymous `GET /api/messages`, `/api/channels`, `/api/memberships`, `/api/chats`, `/api/pengunas`, `/api/media` all return 401/403.
+- [x] Anonymous `GET /api/messages`, `/api/channels`, `/api/memberships`, `/api/chats`, `/api/penggunas`, `/api/media` all return 401/403.
 - [x] User A cannot read, update or delete user B's `penggunas` document.
 - [x] User A cannot read user B's conversation with user C.
 - [x] User A (non-member) cannot read or write messages in channel X. *(Implemented 2026-10-30: `messages.access.read` is scoped to the caller's channels via a membership lookup, and the `beforeChange` hook rejects a create from a non-member. Covered by `authz.anonymous.spec.ts` — "channel messages are scoped to membership".)*
@@ -78,7 +78,8 @@ Target state per collection:
 admin-only on every operation; `penggunas` is authenticated on read and self-scoped on
 update/delete, with `email` readable only by its owner (or an admin) and `username` readable by
 any authenticated user. `chats`, `channels`, `memberships`, `messages` and `media` all require a
-session and are scoped per the table above. 43 tests pass across the six authz suites.
+session and are scoped per the table above. The authz suites pass (the full integration suite is
+73 `it` blocks / 79 test cases across 8 files — see the [Stage A gate checklist](#stage-a-gate-checklist)).
 
 **New deliverable — the sanitized users directory (SEC-013).** Because `penggunas.access.read`
 is now authenticated-only and the `email` field is owner-only, the chat UI can no longer build a
@@ -101,7 +102,7 @@ member list from `GET /api/penggunas`. A dedicated endpoint was added instead:
 running Payload instance.
 
 **Acceptance criteria.**
-- [x] `GET /api/pengunas/directory` requires authentication (403 otherwise).
+- [x] `GET /api/penggunas/directory` requires authentication (403 otherwise).
 - [x] The response contains exactly `{ id, username }` per entry — no email addresses.
 - [x] The directory requires a `q` term of ≥ 2 characters and is paginated (400 otherwise).
 - [x] A full user dump is no longer possible in a single request (search + edge rate limit).
@@ -177,7 +178,7 @@ carrying a `password` from a non-owner.
 | `@payloadcms/next` | 3.70.0 | 3.92.1 |
 | `@payloadcms/db-mongodb` | 3.70.0 | 3.92.1 |
 | `@payloadcms/ui` | 3.70.0 | 3.92.1 |
-| `@payloadcms/richtext-lexical` | 3.70.0 | 3.92.1 |
+| `@payloadcms/richtext-lexical` | 3.70.0 | 3.92.1 *(resolved; `package.json` declares `^3.78.0`)* |
 | `@payloadcms/payload-cloud` | 3.70.0 | 3.92.1 |
 | `@payloadcms/email-nodemailer` | ^3.70.0 | 3.92.1 |
 | `next` | 15.5.9 | **>= 15.5.28** (or 16.4.1 if Payload 3.92.1 supports it) |
@@ -212,7 +213,7 @@ carrying a `password` from a non-owner.
 
 | Package | Resolved |
 |---|---|
-| `payload`, `@payloadcms/*` | 3.92.1 |
+| `payload`, `@payloadcms/*` (incl. `richtext-lexical`) | 3.92.1 |
 | `next` | 16.4.3 |
 | `react` / `react-dom` | 19.2.6 |
 | `sharp` | 0.35.5 |
@@ -322,20 +323,21 @@ A dedicated isolated origin reverse proxy configuration is provided at `payload-
 3. Decide the registration model:
    - **Invite-only** (recommended for a personal portfolio): `Penggunas.access.create` -> `() => false`, and provision accounts through the Admin Panel or a CLI script.
    - **Open registration**: keep `create: () => true` but add email verification (`auth.verify: true`, which requires configuring the nodemailer adapter — see B2), plus CAPTCHA or an equivalent at the edge.
-4. Ensure `POST /api/pengunas/first-register` is closed on the production database by ensuring at least one `penggunas` account exists (see A7's verification step).
+4. Ensure `POST /api/penggunas/first-register` is closed on the production database by ensuring at least one `penggunas` account exists (see A7's verification step).
 
 **Acceptance criteria.**
 - [x] A duplicate username is rejected. *(`authz.registration.spec.ts`.)*
 - [x] A 3-character password is rejected. *(`authz.registration.spec.ts` — minimum length is 8.)*
 - [ ] A duplicate email is rejected. *(Enforced by Payload's unique email; not asserted in a dedicated test.)*
-- [ ] `POST /api/pengunas/first-register` returns 403 on the production database. *(Requires the production database; A9's script provisions the first admin.)*
+- [ ] `POST /api/penggunas/first-register` returns 403 on the production database. *(Requires the production database; A9's script provisions the first admin.)*
 
-**As implemented (2026-10-30).** Registration stays **open**, with email verification enabled
-(decision recorded for this project). `penggunas.auth.verify = true`, and a
-`beforeValidate` hook rejects passwords shorter than 8 characters. `username` is now
-`required`, `unique`, and validated against `/^[a-z0-9_]{3,24}$/`. The email transport is
-wired from `SMTP_*` variables in `src/config/email.ts` (task B1); when unset, Payload logs
-outbound mail so local development and the test suite still run. Covered by
+**As implemented (2026-10-30).** Registration stays **open**. Email verification is **disabled**
+(`penggunas.auth.verify = false`) — see B1, where the decision was rescoped: the abuse control for
+open registration is the A8 edge rate limiting, not a verification gate. A `beforeValidate` hook
+rejects passwords shorter than 8 characters, and `username` is now `required`, `unique` and
+validated against `/^[a-z0-9_]{3,24}$/`. The email transport is wired from `SMTP_*` variables in
+`src/config/email.ts` (task B1), used by the password-reset flow; when unset, Payload logs outbound
+mail so local development and the test suite still run. Covered by
 `tests/int/authz.registration.spec.ts`.
 
 ---
@@ -401,8 +403,8 @@ CSP; `proxy_params.inc` is shared with the API locations.
 
 **Scope.** nginx `limit_req_zone` / `limit_conn_zone`:
 - General API: ~10 r/s per IP with a small burst.
-- `POST /api/pengunas/login`: 5/min per IP.
-- `POST /api/pengunas` (registration): 3/hour per IP.
+- `POST /api/penggunas/login`: 5/min per IP.
+- `POST /api/penggunas` (registration): 3/hour per IP.
 - `POST /api/media`: 10/hour per user.
 - Cap concurrent connections per IP.
 
@@ -434,10 +436,10 @@ general API (10 r/s), login (5 r/min), registration (3 r/h) and uploads (10 r/h)
 1. Restrict `/admin` at the reverse proxy by source IP (optional but cheap) or by an additional auth layer.
 2. Provision the first administrator through a controlled script rather than the public first-register flow.
 3. Consider `graphQL.disable: true` in the Payload config if the SPA does not use GraphQL — this removes a second full API surface.
-4. Verify `POST /api/pengunas/first-register` returns 403 on the production database.
+4. Verify `POST /api/penggunas/first-register` returns 403 on the production database.
 
 **Acceptance criteria.**
-- [ ] `POST /api/pengunas/first-register` -> 403. *(Requires a production database with an existing user; the provisioning script closes the window.)*
+- [ ] `POST /api/penggunas/first-register` -> 403. *(Requires a production database with an existing user; the provisioning script closes the window.)*
 - [ ] `POST /api/users/first-register` -> 403. *(As above.)*
 - [x] `/api/graphql` returns 404 (GraphQL is disabled). *(`graphQL.disable: true`.)*
 
@@ -459,7 +461,7 @@ nginx vhost returns 404 for `/admin`.
 - [x] A7 deployment artefacts fixed
 - [x] A8 rate limiting active
 - [x] A9 admin surface restricted
-- [x] Full authz regression suite green against a disposable database *(80 tests across 8 files, 2026-10-30)*
+- [x] Full authz regression suite green against a disposable database *(73 `it` blocks / 79 test cases across 8 files, 2026-10-30)*
 - [ ] VPS verification checklist (section 5 of the deployment guide) passes
 - [ ] A backup has been taken **and a restore rehearsed**
 
@@ -625,7 +627,7 @@ helper schedules with exponential backoff (3–4 s base → 30 s ceiling), pause
 | ID | Task | Findings | Effort | Notes |
 |---|---|---|---|---|
 | C1 | Remove unused dependencies (`dompurify`, `monaco-editor`, `yjs`) and dead frontend components (`Channel.vue`, `CreateChannel.vue`, `Browse.vue`, `TheWelcome.vue`, `WelcomeItem.vue`, `HelloWorld.vue`, `stores/counter.js`, `main_old.css`) and their routes | SEC-016 | Small | Reduces the advisory count and removes misleading dead code |
-| C2 | Resolve the package-manager inconsistency: either commit a `pnpm-lock.yaml` or change `engines` to npm | — | Small | Prevents non-reproducible builds |
+| C2 | Remove the residual package-manager artefacts: `engines` now declare node/npm and compose runs `npm ci`, but a `pnpm.onlyBuiltDependencies` block and `.yarnrc` remain | — | Small | Prevents non-reproducible builds |
 | C3 | Delete the Payload template residue: `/my-route`, the template landing page at `/`, the `admin` link from the public site, the `graphql-playground` route | SEC-012 | Small | The template page currently advertises the admin panel |
 | C4 | Consolidate the two messaging models (`chats` and `messages`) onto one schema | — | Large | Removes a whole class of divergence bugs (as seen in `Channel.vue`) |
 | C5 | Replace polling with a real-time transport (SSE or WebSocket) | SEC-009 | Large | Requires a per-connection auth and per-room authorization design — see the architecture doc's trust-boundary section |
@@ -658,26 +660,26 @@ DATABASE_URI=mongodb://127.0.0.1:27018/chat_test PAYLOAD_SECRET=test-secret npm 
 
 | ID | Scenario | Expected |
 |---|---|---|
-| T-AUTH-01 | `POST /api/pengunas/login` with a wrong password | 401, generic message, no user-existence disclosure |
-| T-AUTH-02 | `POST /api/pengunas/login` for a non-existent email | Same status and message as T-AUTH-01 |
+| T-AUTH-01 | `POST /api/penggunas/login` with a wrong password | 401, generic message, no user-existence disclosure |
+| T-AUTH-02 | `POST /api/penggunas/login` for a non-existent email | Same status and message as T-AUTH-01 |
 | T-AUTH-03 | Six consecutive failed logins for one account | Account locked; the rate limiter (A8) returns 429 before the lockout |
-| T-AUTH-04 | `GET /api/pengunas/me` with no cookie | 401 |
-| T-AUTH-05 | `GET /api/pengunas/me` with an expired/tampered JWT | 401 |
-| T-AUTH-06 | `POST /api/pengunas/logout` then reuse the cookie | 401 — the session is gone from the user document |
+| T-AUTH-04 | `GET /api/penggunas/me` with no cookie | 401 |
+| T-AUTH-05 | `GET /api/penggunas/me` with an expired/tampered JWT | 401 |
+| T-AUTH-06 | `POST /api/penggunas/logout` then reuse the cookie | 401 — the session is gone from the user document |
 | T-AUTH-07 | Inspect the `Set-Cookie` header | `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` present |
-| T-AUTH-08 | `POST /api/pengunas/first-register` | 403 |
-| T-AUTH-09 | `GET /api/pengunas` anonymous | 403 (after A1) |
-| T-AUTH-10 | `POST /api/pengunas` with a 3-character password | 400 (after A6) |
+| T-AUTH-08 | `POST /api/penggunas/first-register` | 403 |
+| T-AUTH-09 | `GET /api/penggunas` anonymous | 403 (after A1) |
+| T-AUTH-10 | `POST /api/penggunas` with a 3-character password | 400 (after A6) |
 | T-AUTH-11 | Register two accounts with the same username | Second rejected (after A6) |
 
 ### 6.2 Authorization — the core matrix
 
 | ID | Scenario | Expected |
 |---|---|---|
-| T-AUTHZ-01 | Alice `GET /api/pengunas` | Only Alice's own document |
-| T-AUTHZ-02 | Alice `PATCH /api/pengunas/<bob-id>` `{"username":"x"}` | 403 |
-| T-AUTHZ-03 | Alice `PATCH /api/pengunas/<bob-id>` `{"password":"x"}` | 403, and Bob can still log in with his password |
-| T-AUTHZ-04 | Alice `PATCH /api/pengunas/<alice-id>` `{"email":"a@b.c"}` | 403 (or the change is rejected) |
+| T-AUTHZ-01 | Alice `GET /api/penggunas` | Only Alice's own document |
+| T-AUTHZ-02 | Alice `PATCH /api/penggunas/<bob-id>` `{"username":"x"}` | 403 |
+| T-AUTHZ-03 | Alice `PATCH /api/penggunas/<bob-id>` `{"password":"x"}` | 403, and Bob can still log in with his password |
+| T-AUTHZ-04 | Alice `PATCH /api/penggunas/<alice-id>` `{"email":"a@b.c"}` | 403 (or the change is rejected) |
 | T-AUTHZ-05 | Alice `GET /api/chats` (no filter) | Only Alice's conversations — never Bob↔Carol |
 | T-AUTHZ-06 | Alice `GET /api/chats/<bob-carol-msg-id>` | 403/404 |
 | T-AUTHZ-07 | Alice `PATCH`/`DELETE` Bob's chat | 403 |
@@ -714,8 +716,8 @@ DATABASE_URI=mongodb://127.0.0.1:27018/chat_test PAYLOAD_SECRET=test-secret npm 
 
 | ID | Scenario | Expected |
 |---|---|---|
-| T-HTTP-01 | `OPTIONS /api/pengunas` with `Origin: https://evil.example` | No `Access-Control-Allow-Origin` |
-| T-HTTP-02 | `POST /api/pengunas/login` with `Origin: https://evil.example` | 403 |
+| T-HTTP-01 | `OPTIONS /api/penggunas` with `Origin: https://evil.example` | No `Access-Control-Allow-Origin` |
+| T-HTTP-02 | `POST /api/penggunas/login` with `Origin: https://evil.example` | 403 |
 | T-HTTP-03 | `OPTIONS` with the real frontend origin | Origin echoed, `Access-Control-Allow-Credentials: true` |
 | T-HTTP-04 | `GET http://app.example.com` | 301/308 to `https://` |
 | T-HTTP-05 | `HEAD https://app.example.com` | HSTS, CSP, `X-Content-Type-Options`, `frame-ancestors` present |
@@ -771,7 +773,7 @@ role-gated `users` collection (B3).
 | SEC-013 — no email leak | `authz.directory.spec.ts` — "returns usernames but no emails"; `authz.pengguna-collection.spec.ts` — list-read email hiding | ✅ |
 | T-FW-01 | OSV `querybatch` — zero advisories for all seven resolved versions | ✅ |
 | T-FW-03 | `npm run build` in both applications | ✅ |
-| T-FW-04 | `npm run test:int` — 80 tests green | ✅ |
+| T-FW-04 | `npm run test:int` — 79 test cases green | ✅ |
 | T-AUTH-01 … T-AUTH-08 | Session and registration behaviour | ⬜ open (live HTTP surface: A5, A8) |
 | T-HTTP-01 … T-HTTP-07 | Transport and browser security | ⬜ open (live server: A5, A7) |
 | T-FW-02, T-FW-05 | Framework image handling, media removal | ⬜ open |

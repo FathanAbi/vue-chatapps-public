@@ -73,7 +73,7 @@ Intended audience: the developer, and visitors of the public deployment.
 | View DM history | **Implemented** | `Chat.vue` `getMessages` — paginated (`limit=50`), auto-refreshed |
 | Send a DM | **Implemented** | `Chat.vue` `sendMessage` |
 | Auto-refresh (polling) | **Implemented** | Exponential backoff via `utils/polling.js` (4 s → 30 s cap), paused while the tab is hidden; "Load older messages" control (B7) |
-| DM list / conversation list | **Not implemented** | No "my conversations" view exists |
+| DM list / conversation list | **Implemented** | Sidebar "Direct messages" section (`AppSidebar.vue` + `stores/chat.js` `loadConversations`) — distinct participants from the caller's own `chats`, each with avatar, username and last-message preview |
 | Edit / delete a DM | **Not implemented** (no UI; backend permits it) | — |
 
 > Note: `Dashboard.vue` finds chat partners through the **search-based** directory endpoint
@@ -127,11 +127,15 @@ the code actually permits; `isAdmin` means a `users` session with the `admin` ro
 
 | Operation | `users` | `penggunas` | `media` | `chats` | `channels` | `memberships` | `messages` |
 |---|---|---|---|---|---|---|---|
-| List (read) | admin only | authenticated | authenticated | caller is a participant | authenticated | own / owner's channels | member of the channel |
-| Read one by id | admin only | authenticated | authenticated | participant | authenticated | scoped | member |
-| Create | admin only | open (registration) | authenticated | authenticated (sender from session) | authenticated | authenticated (self) | member (sender from session) |
-| Update | admin only | self only | owner or admin | sender only | owner only | — | sender only |
-| Delete | admin only | self only | owner or admin | sender only | owner only | own / channel owner | sender only |
+| List (read) | admin only | authenticated | authenticated | caller is a participant | authenticated | authenticated | member of the channel |
+| Read one by id | admin only | authenticated | authenticated | participant | authenticated | authenticated | member |
+| Create | admin only | open (registration) | authenticated (uploader from session) | authenticated (sender from session) | authenticated (owner from session) | authenticated (`pengguna_id` from session) | member + sender from session |
+| Update | admin only | self only | authenticated | sender only | owner only | authenticated (fields immutable) | sender only |
+| Delete | admin only | self only | authenticated | sender only | owner only | own membership only | sender only |
+
+> `media` operations require an authenticated session but do not currently scope `update`/`delete`
+> to the uploader (the collection declares `isAuthenticated` for all four operations; `uploadedBy`
+> is recorded and immutable but not enforced as an ownership check). See `payload-be/src/collections/Media.ts`.
 
 Email addresses are readable only by their owner (or an admin); the chat UI uses the
 search-based `GET /api/penggunas/directory?q=…` (minimum 2 characters, paginated) to find other
@@ -212,17 +216,27 @@ Route `/chat/:user_id` → `Chat.vue`:
 
 | Path | Name | Component | Auth guard | Purpose |
 |---|---|---|---|---|
-| `/` | `home` | `HomeView` → `TheWelcome.vue` | public | Template welcome page (unused in the product flow) |
-| `/about` | `about` | `AboutView` (lazy) | public | Template page (unused) |
-| `/login` | `login` | `LoginView` → `Login.vue` | public | Login form |
-| `/register` | `register` | `RegisterView` → `Register.vue` | public | Registration form |
-| `/forgot-password` | `forgot-password` | `ForgotPasswordView.vue` | public | Request a reset link (B1) |
-| `/reset-password` | `reset-password` | `ResetPasswordView.vue` | public | Set a new password from a token (B1) |
+| `/` | `home` | `HomeView` (PublicLayout) | public | Landing page |
+| `/about` | `about` | `AboutView` (lazy, PublicLayout) | public | About page |
+| `/login` | `login` | `LoginView` → `Login.vue` (AuthLayout) | public | Login form |
+| `/register` | `register` | `RegisterView` → `Register.vue` (AuthLayout) | public | Registration form |
+| `/forgot-password` | `forgot-password` | `ForgotPasswordView.vue` (AuthLayout) | public | Request a reset link (B1) |
+| `/reset-password` | `reset-password` | `ResetPasswordView.vue` (AuthLayout) | public | Set a new password from a token (B1) |
 | `/dashboard` | `dashboard` | `DashboardView` → `Dashboard.vue` | **required** | Main app shell |
-| `/browse` | `browse` | `BrowseView` → `Browse.vue` | **required** | Legacy user browser |
-| `/create` | `create` | `CreateChannelView` → `CreateChannel.vue` | **required** | Legacy create-channel form |
 | `/chat/:user_id` | `channel` | `ChatView` → `Chat.vue` | **required** | Direct message thread |
 | `/channel/:id` | `ChannelChatroom` | `ChannelChatroomView` → `ChannelChatroom.vue` | **required** | Channel room |
+| `/browse` | `browse` | **redirect → `dashboard`** | **required** | Legacy URL, folded into the dashboard |
+| `/create` | `create` | **redirect → `dashboard`** | **required** | Legacy URL, folded into the dashboard |
+
+> Since the UI refactor, every route is a child of a single `AppLayout` route.
+> Auth and public routes set `meta.bare` so they render their own `AuthLayout` /
+> `PublicLayout` without the app chrome. See
+> [`LAYOUT_AND_NAVIGATION.md`](./LAYOUT_AND_NAVIGATION.md).
+>
+> The legacy `Browse.vue` / `CreateChannel.vue` components and the unrouted
+> `ChannelView.vue` / `Channel.vue` were removed; `/browse` and `/create` remain
+> valid URLs as redirects. Route names, params and query parameters are
+> unchanged.
 
 **Route guards (B2).** A global `router.beforeEach` calls `GET /api/penggunas/me` and redirects
 to `/login` for any non-public route when there is no session. Routes marked `meta: { public:
@@ -285,6 +299,7 @@ exactly (scheme + host + port). See SEC-008 and the deployment guide.
 | `editor` | `lexicalEditor()` | No richText field uses it |
 | `secret` | `requireEnv('PAYLOAD_SECRET')` | Fails fast when unset |
 | `db` | `mongooseAdapter({ url: requireEnv('DATABASE_URI') })` | |
+| `upload` | `{ abortOnLimit, limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 }, requestSizeLimit, responseOnLimit, useTempFiles: true, tempFileDir: 'tmp' }` | Multipart bounds + streaming (A4/SEC-004) |
 | `sharp` | imported | Image processing active |
 | `plugins` | `[payloadCloudPlugin()]` | No cloud adapter attached |
 | `cors` / `csrf` | from `FRONTEND_ORIGINS` / `SERVER_URL` | see 6.3 |
@@ -292,8 +307,13 @@ exactly (scheme + host + port). See SEC-008 and the deployment guide.
 | `email` | `buildEmailAdapter()` | Nodemailer when `SMTP_*` is set, else logs mail |
 | `endpoints` | `[healthEndpoint]` | `GET /api/health` (B4) |
 | `graphQL.disable` | `true` | The second API surface is off (A9) |
+| `defaultMaxTextLength` | `2000` | `MAX_TEXT_LENGTH` (A8/SEC-009) |
 | `typescript.outputFile` | `src/payload-types.ts` | |
 | `debug` | not set | Production error messages stay generic |
+
+The `engines` field requires `node ^22.23.4 || >=24.22.1` and `npm >=10`; an `overrides` block
+pins `happy-dom` and `graphql-scalars`, and a `pnpm.onlyBuiltDependencies` block lists `sharp`,
+`esbuild` and `unrs-resolver`.
 
 ---
 
@@ -303,7 +323,7 @@ All commands are the **actual** scripts from the committed `package.json` files.
 
 ### 7.1 Backend — `payload-be/`
 
-> The `engines` field declares **pnpm** (`^9 || ^10`), but the committed lockfile is npm's `package-lock.json`. Pick one and be consistent: **`npm` reproduces the committed lockfile**; `pnpm install` would re-resolve and produce a different tree.
+> The `engines` field requires **`node ^22.23.4 || >=24.22.1`** and **`npm >=10`**. The committed lockfile is npm's `package-lock.json`, and the npm scripts use `npm run` throughout, so **`npm` reproduces the committed lockfile**.
 
 | Command | Script | What it does |
 |---|---|---|
@@ -312,13 +332,13 @@ All commands are the **actual** scripts from the committed `package.json` files.
 | `npm run devsafe` | `rm -rf .next && … next dev` | Dev server with a clean `.next` (**POSIX-only `rm`; will fail on Windows cmd**) |
 | `npm run build` | `cross-env NODE_OPTIONS="--no-deprecation --max-old-space-size=8000" next build` | Production build of the Next.js app + Payload admin |
 | `npm start` | `cross-env NODE_OPTIONS=--no-deprecation next start` | Run the production build |
-| `npm run lint` | `cross-env NODE_OPTIONS=--no-deprecation next lint` | ESLint via Next.js |
+| `npm run lint` | `cross-env NODE_OPTIONS=--no-deprecation eslint .` | ESLint directly — Next.js 16 removed `next lint`; `eslint.config.mjs` uses the native flat `eslint-config-next` configs |
 | `npm run payload` | `cross-env NODE_OPTIONS=--no-deprecation payload` | Payload CLI (e.g. `npm run payload generate:types`) |
-| `npm run generate:types` | `payload generate:types` | Regenerate `src/payload-types.ts` |
-| `npm run generate:importmap` | `payload generate:importmap` | Regenerate the Admin Panel import map |
-| `npm run test:int` | `cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts` | Vitest integration tests (`tests/int/**/*.int.spec.ts`) |
-| `npm run test:e2e` | `cross-env NODE_OPTIONS="--no-deprecation --no-experimental-strip-types" pnpm exec playwright test` | Playwright e2e — **note the script itself invokes `pnpm`**, so it requires pnpm on `PATH` |
-| `npm test` | `pnpm run test:int && pnpm run test:e2e` | Both suites — **also requires pnpm** |
+| `npm run generate:types` | `cross-env NODE_OPTIONS=--no-deprecation payload generate:types` | Regenerate `src/payload-types.ts` |
+| `npm run generate:importmap` | `cross-env NODE_OPTIONS=--no-deprecation payload generate:importmap` | Regenerate the Admin Panel import map |
+| `npm run test:int` | `cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts` | Vitest integration tests (`tests/int/**/*.spec.ts`) |
+| `npm run test:e2e` | `cross-env NODE_OPTIONS="--no-deprecation --no-experimental-strip-types" playwright test` | Playwright e2e |
+| `npm test` | `npm run test:int && npm run test:e2e` | Both suites |
 
 ### 7.2 Frontend — `vue-frontend/`
 
@@ -354,7 +374,8 @@ npm install
 npm run dev                   # http://localhost:5173
 ```
 
-The CORS/CSRF allow-list already contains `http://localhost:5173` and `http://localhost:50011`, so the Vite dev server works without config changes.
+The CORS/CSRF allow-list is now read from the environment (see 6.3), so set
+`FRONTEND_ORIGINS=http://localhost:5173` in `payload-be/.env` for local development.
 
 ### 7.4 Docker Compose (development only)
 
@@ -377,7 +398,7 @@ deployment guide.
 
 | Suite | Files | Coverage |
 |---|---|---|
-| Integration (Vitest) | `payload-be/tests/int/*.spec.ts` | **80 authorization/registration/upload tests across 8 files** (`authz.anonymous`, `authz.directory`, `authz.pengguna-collection`, `authz.pengguna`, `authz.registration`, `authz.users`, `uploads`, plus `api.int`) |
+| Integration (Vitest) | `payload-be/tests/int/*.spec.ts` | **79 authorization/registration/upload test cases across 8 files** — 73 `it` blocks, one of which is an `it.each` over 7 collections (`authz.anonymous`, `authz.directory`, `authz.pengguna-collection`, `authz.pengguna`, `authz.registration`, `authz.users`, `uploads`, plus `api.int`) |
 | E2E (Playwright) | `payload-be/tests/e2e/frontend.e2e.spec.ts` | Asserts the SPA mounts and the anti-framing headers are present |
 
 The integration suite covers the full per-document authorization matrix, sender
@@ -389,7 +410,7 @@ password-reset round-trip (B1). See `docs/remediation-plan.md` §6 for the scena
 ```bash
 cd payload-be
 npm run test:int      # vitest; needs a reachable DATABASE_URI
-npm run test:e2e      # playwright; needs the dev server on :3000 (playwright.config.ts starts `pnpm dev` itself)
+npm run test:e2e      # playwright; needs the dev server on :3000 (playwright.config.ts starts the dev server itself)
 ```
 
 The Vitest config (`vitest.config.mts`) runs the `int` project under `environment: 'node'` and
@@ -434,7 +455,7 @@ There is no seed script, no fixture, and no migration runner in the repository, 
 
 ### Functional
 - Polling instead of real-time (3–4 s base, exponential backoff to 30 s; no delivery guarantees, no unread indicators).
-- No conversation list — the user must start a DM from the user grid.
+- The direct-message list is derived from the caller's most recent 100 chats (deduplicated, capped at 20); a participant outside that window is still reachable via the People search.
 - Message threads are paginated (50 per page, "Load older messages").
 - No message editing, deletion, reactions, replies, threads, search, or attachments in the UI.
 - No profile editing, no avatar upload, no display name separate from username.
@@ -458,9 +479,9 @@ There is no seed script, no fixture, and no migration runner in the repository, 
 - Deployment artefacts (Dockerfiles, compose file, nginx vhost) are hardened: no published database port, MongoDB auth, TLS-terminating vhost, environment-driven origins.
 
 ### Maintenance
-- 80 integration tests cover the authorization matrix, registration policy, uploads and password reset; the e2e test asserts the SPA mounts.
+- 79 integration test cases cover the authorization matrix, registration policy, uploads and password reset; the e2e test asserts the SPA mounts.
 - Two divergent messaging implementations (`chats` vs `messages`) with different field names (Stage C4).
-- Dead components (`Channel.vue`, `CreateChannel.vue`, `Browse.vue`, `TheWelcome.vue`, `WelcomeItem.vue`, `HelloWorld.vue`) remain (Stage C1).
-- Package-manager inconsistency: pnpm declared, npm lockfile committed (Stage C2).
-- Two unused production dependencies (`dompurify`, `monaco-editor`) that expand the dependency and advisory surface.
-- `docker-compose.yml` uses an obsolete `version: '3'` key and `mongo:latest`.
+- Dead components remain: `Channel.vue` (imported only by the unrouted `ChannelView.vue`) and the template leftovers `TheWelcome.vue`, `WelcomeItem.vue`, `HelloWorld.vue`. `Browse.vue` and `CreateChannel.vue` are *reachable* via `/browse` and `/create` even though the product flow does not need them (Stage C1).
+- Package-manager residue: `engines` now declare node/npm and the compose file runs `npm ci`, but a `pnpm.onlyBuiltDependencies` block and `.yarnrc` remain (Stage C2).
+- The previously-unused production dependencies (`dompurify`, `monaco-editor`, `yjs`) were removed in Stage A (SEC-016).
+- `docker-compose.yml` no longer uses a `version: '3'` key, pins `mongo:7`, and runs `node:22-alpine` with `npm ci`.

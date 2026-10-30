@@ -19,7 +19,7 @@
 >   password-reset flow added), plus a DB-backed `GET /api/health`.
 > - **Deferred:** backups/rehearsed restore (B5), CI (B6), off-host log shipping/alerting (B4).
 >
-> The regression suite is green: **80 integration tests across 8 files** against a
+> The regression suite is green: **73 `it` blocks (79 test cases) across 8 files** against a
 > disposable database, `tsc --noEmit` clean, both applications build. Items that can only be
 > confirmed on the target VPS (TLS headers, live CORS/CSRF behaviour, closed 27017, image-layer
 > inspection, a rehearsed backup restore) are explicitly marked **unverified** in their sections.
@@ -62,7 +62,7 @@ No credential or secret was found committed to the repository or its Git history
 | SEC-012 | Deployment artefacts insecure by default (Mongo published, no `.dockerignore`, HTTP-only nginx) | **Medium** | High | **Remediated** (2026-10-30) | No |
 | SEC-013 | Unauthenticated enumeration of all registered users (email disclosure) | **Medium** | High | **Remediated** (2026-10-30; residual accepted) | No |
 | SEC-014 | No CSP, HSTS, `X-Content-Type-Options` or `frame-ancestors`; incomplete CSRF posture | **Medium** | High | **Remediated** (2026-10-30) | No |
-| SEC-015 | Frontend has no route guards — protected views render unauthenticated | **Low** | High | Confirmed (static) — Stage B | No |
+| SEC-015 | Frontend has no route guards — protected views render unauthenticated | **Low** | High | **Remediated** (2026-10-30, B2) | No |
 | SEC-016 | Unused dependencies (`dompurify`, `monaco-editor`) and dead code enlarge surface | **Low** | High | **Remediated** (2026-10-29) | No |
 | SEC-017 | No CI/CD, no backup procedure, no monitoring, no health check | **Low** | High | Partially remediated (2026-10-30) — Stage B | No |
 | SEC-018 | `users` (admin) collection has no roles — every admin sees everything | **Low** | High | **Remediated** (2026-10-30) | Yes |
@@ -210,6 +210,14 @@ Every operation in this application either overrides that with `() => true`, or 
 | graphql | `^16.8.1` | 16.12.0 | No OSV records. |
 | react / react-dom | `^19.2.3` | — | Required by Payload 3.70's Admin Panel. |
 
+> **Current state (2026-10-30, after task A3).** `payload` and all `@payloadcms/*` are `3.92.1`
+> (the `richtext-lexical` entry declares `^3.78.0` and resolves to 3.92.1), `next` is `16.4.3`,
+> `react`/`react-dom` are `19.2.6`, `sharp` is `0.35.5`, `mongoose` is `8.24.1` (transitive) and
+> the frontend `qs` is `6.17.1`. `dompurify`, `monaco-editor` and `yjs` were removed. The backend
+> `engines` now require `node ^22.23.4 || >=24.22.1` and `npm >=10`, both Dockerfiles use
+> `node:22-alpine`, and `docker-compose.yml` runs `npm ci` (the `pnpm install` was removed). An
+> `overrides` block now pins `happy-dom` and `graphql-scalars`.
+
 ### 5.2 Next.js advisories affecting `next@15.5.9` (33 matched)
 
 Grouped by impact. **All are reachable** unless noted: Next.js 15.5.9 is the App Router version and this project uses the App Router.
@@ -302,12 +310,16 @@ Grouped by impact. **All are reachable** unless noted: Next.js 15.5.9 is the App
 
 ### 5.5 Package-hygiene observations
 
-- **Package-manager mismatch**: `package.json` `engines` declares pnpm; the committed lockfile is npm's. `docker-compose.yml:12` runs `pnpm install`, discarding the committed lockfile's pinning. **Every container build is therefore non-reproducible.**
+> **Current state (2026-10-30).** Most of the hygiene observations below were addressed in Stage A;
+> the as-audited text is retained and annotated inline.
+
+- **[Resolved]** ~~**Package-manager mismatch**: `package.json` `engines` declares pnpm; the committed lockfile is npm's. `docker-compose.yml:12` runs `pnpm install`~~ — the backend `engines` now require `node`/`npm`, and `docker-compose.yml` runs `npm ci`, honouring the lockfile.
 - **`.npmrc` sets `legacy-peer-deps=true`** — a blanket suppression of peer-dependency conflicts. It can mask real incompatibilities; it was required for the React 19 upgrade.
 - **`.yarnrc` sets `--install.ignore-engines true`** — a third package manager's config file is present although neither pnpm nor yarn is actually used. It should be removed.
-- **No `overrides`/`resolutions` block** exists, so transitive advisories (mongoose, sharp, qs) can only be fixed by a direct dependency bump.
-- **`sharp` is pinned exactly** (`0.34.2`, no caret) — good practice for a native module, but it means it will never receive the 0.35.x security fixes automatically.
-- **`@payloadcms/email-nodemailer` is installed but not configured.** It is dead weight until an email adapter is added.
+- **[Resolved]** ~~**No `overrides`/`resolutions` block** exists~~ — `package.json` now carries an `overrides` block (`happy-dom`, `graphql-scalars`). Transitive advisories (mongoose, sharp, qs) were nonetheless fixed by the direct dependency bump in A3.
+- **`sharp` was pinned exactly** (`0.34.2`, no caret) — good practice for a native module, but it means it would not receive 0.35.x security fixes automatically. It is now `0.35.5`.
+- **[Resolved]** ~~**`@payloadcms/email-nodemailer` is installed but not configured.**~~ — the adapter is now wired via `src/config/email.ts` (`buildEmailAdapter()`) and drives the password-reset email (B1); it logs mail when `SMTP_*` is unset.
+- **[Resolved]** The unused `dompurify`, `monaco-editor` and `yjs` dependencies were removed (SEC-016).
 
 ---
 
@@ -403,7 +415,7 @@ The finding is closed. Four independent layers now stand between an attacker and
 | `authz.anonymous.spec.ts` | Anonymous access to every collection is denied; `sender_id` / `Sender` / `pengguna_id` / `owner` are bound to the session rather than the request body; conversations are private to their participants; non-owners cannot rename or delete a channel. |
 | `authz.directory.spec.ts` | The search-based users directory exposes `id` and `username` only — no email addresses — rejects anonymous requests, rejects a missing/short `q` (400), filters by term, and rejects anonymous requests. |
 
-All 43 tests in these six suites pass, and `tsc --noEmit` is clean.
+These six suites pass (as part of the full 73-block / 79-case integration suite), and `tsc --noEmit` is clean.
 
 ---
 
@@ -1109,7 +1121,7 @@ An OSV `querybatch` against `mongoose@8.24.1`, `sharp@0.35.5` and `qs@6.17.1` re
 - **Edge rate limiting.** `vue-frontend/default.conf` adds a dedicated `limit_req_zone` (`api_directory`, 20 r/m per IP) applied to `location = /api/penggunas/directory`, so even a search term cannot be used to enumerate at speed.
 - **The Vue SPA was switched to the search contract.** `Dashboard.vue` and `Browse.vue` now issue a debounced search request (`q` + `limit`) instead of listing every user, and the dashboard's user cards never display an email address.
 
-**Verification:** `tests/int/authz.directory.spec.ts` — anonymous request rejected; missing/short `q` rejected with 400; results contain exactly `{ id, username }` and no email; the search term filters and excludes non-matches; `parseDirectoryQuery` bounds/clamps `page`/`limit`. `tests/int/authz.pengguna-collection.spec.ts` — a list read hides other users' email addresses while showing the caller their own. The suite is **80 tests across 8 files**, all green; `tsc --noEmit` clean; both applications build.
+**Verification:** `tests/int/authz.directory.spec.ts` — anonymous request rejected; missing/short `q` rejected with 400; results contain exactly `{ id, username }` and no email; the search term filters and excludes non-matches; `parseDirectoryQuery` bounds/clamps `page`/`limit`. `tests/int/authz.pengguna-collection.spec.ts` — a list read hides other users' email addresses while showing the caller their own. The suite is **73 `it` blocks / 79 test cases across 8 files**, all green; `tsc --noEmit` clean; both applications build.
 
 **Residual — accepted risk (2026-10-30).** Authenticated users can still discover usernames by issuing targeted searches (each of which returns at most 50 entries and is rate-limited). Full removal would require contact-scoped visibility (only expose users you already share a channel or DM with), which the product owner has declined because the chat UI must let a user start a conversation with any registered account. **Signed off by the product owner on 2026-10-30.** Email addresses are never exposed by any path.
 
@@ -1374,10 +1386,10 @@ Recording these explicitly so the remediation work is not padded and so future r
 | Token storage in the browser | **Clean.** No `localStorage` or `sessionStorage` usage. Authentication is entirely cookie-based with `HttpOnly`. | Repository-wide search → no matches. |
 | SQL injection | **Not applicable.** MongoDB via the Mongoose adapter; no SQL surface exists. | `payload-be/src/payload.config.ts:46-48` — `mongooseAdapter`. |
 | Real-time transport | **Not present.** No WebSocket, Socket.IO or SSE server or client exists; Payload's WebSocket usage in the framework is limited to the dev-mode HMR client (disabled when `NODE_ENV=production`). | Search for `socket`, `websocket`, `EventSource` → no matches; `payload/src/index.js` opens the HMR socket only when `NODE_ENV !== 'production'`. |
-| GraphQL as an additional exposure surface | **Not a bypass** — GraphQL applies the same access functions, so it is affected by the same findings but adds no new bypass. | Payload wires `/api/graphql` to `GRAPHQL_POST(config)` — the same operation layer. |
+| GraphQL as an additional exposure surface | **Not a bypass** — GraphQL applies the same access functions, so it is affected by the same findings but adds no new bypass. **Now disabled entirely** (`graphQL.disable: true`, A9). | Payload wires `/api/graphql` to `GRAPHQL_POST(config)` — the same operation layer. |
 | GraphQL introspection / playground in production | **Safe.** `disableIntrospectionInProduction` and `disablePlaygroundInProduction` both default to `true`. | Payload 3.70.0 `config/defaults.js`. |
 | Password storage | **Acceptable.** PBKDF2-SHA256 with a random 32-byte salt, 25 000 iterations, constant-time `scmp` comparison. Weakness: iteration count is below current guidance (GHSA-q6mq-ch85-c8mm — see SEC-011). | `payload@3.70.0` `auth/strategies/local/generatePasswordSaltHash.ts` and `auth/strategies/local/authenticate.ts`. |
-| Password reset flow | **Not exploitable by injection** in 3.70.0 — but GHSA-hp5w-3hxx-vmwf (< 3.79.1) applies; and the flow is broken operationally because no email adapter is configured (tokens go to the server log). | `payload.config.ts` has no `email:` key; Payload falls back to `consoleEmailAdapter`. |
+| Password reset flow | **Not exploitable by injection** in 3.70.0 — but GHSA-hp5w-3hxx-vmwf (< 3.79.1) applied. **Remediated**: Payload was upgraded past the fix, the email adapter is now wired (`src/config/email.ts`, B1), and the reset link is only printed to the console in non-production when SMTP is unset. | `payload.config.ts` `email: buildEmailAdapter()`; `Penggunas.auth.forgotPassword`. |
 | Filename handling | **Acceptable.** `sanitize-filename` plus a uniqueness loop; `getSafeFileName` prevents collisions and strips traversal characters. | `payload@3.70.0` `uploads/getSafeFilename.ts`. |
 | Upload content sniffing | **Good.** Payload detects the real type with `file-type` (`fileTypeFromBuffer`) rather than trusting the client's `Content-Type`, and blocks a list of dangerous extensions. The gap is that SVG/XML/HTML are not on that list (SEC-004). | `payload@3.70.0` `uploads/generateFileData.ts`, `uploads/checkFileRestrictions.ts`. |
 | Path traversal on file serving | **Acceptable.** `getFileHandler` resolves the path with `path.resolve` under the collection's static directory. | `payload@3.70.0` `uploads/endpoints/getFile.ts`. |
@@ -1417,7 +1429,7 @@ See **[`remediation-plan.md`](./remediation-plan.md)** for the full three-stage 
 | Availability & resource controls | **Pass (repository)** | Edge rate limits, 5 MB upload cap, `defaultMaxTextLength`, message length bounded; client polling backoff + visibility pause (B7) | Live 429 check |
 | Logging & monitoring | **Partial** | Log rotation, healthchecks and a DB-backed `/api/health` endpoint added (B4) | Off-host log shipping and alerting (deferred) |
 | Backups & recovery | **Fail** | No backup script, no snapshot policy, no restore procedure | Automated off-host backup **plus a rehearsed restore** (B5 — deferred) |
-| Testing & maintainability | **Pass (repository)** | 73 authorization/registration/upload regression tests; e2e rewritten off the template | CI gate (B6 — not in scope) |
+| Testing & maintainability | **Pass (repository)** | 73 `it` blocks / 79 test cases (authorization/registration/upload) across 8 files; e2e rewritten off the template | CI gate (B6 — not in scope) |
 | Deployment & rollback | **Partial** | Pinned `mongo:7` / `node:22-alpine`, `npm ci` builds, multi-stage image | CI/CD and a documented rollback path (B6 — not in scope) |
 
 ### Verdict: **NO-GO** *(as of 2026-10-29, commit `1b33cc7`)*
@@ -1437,7 +1449,7 @@ See **[`remediation-plan.md`](./remediation-plan.md)** for the full three-stage 
 
 **Conditions for a future CONDITIONAL GO.** All of the following must be true:
 1. SEC-001 through SEC-014 are closed and the regression tests in the remediation plan pass. — **Met (repository)**; tests green.
-2. The authorization test suite runs green against a disposable database with synthetic accounts. — **Met** (73 tests, 8 files, 2026-10-30).
+2. The authorization test suite runs green against a disposable database with synthetic accounts. — **Met** (73 `it` blocks / 79 test cases, 8 files, 2026-10-30).
 3. `next` ≥ 15.5.28 and `payload` = 3.92.1 are installed, and the OSV scan for both returns zero records. — **Met** (Next 16.4.3, Payload 3.92.1, OSV clean).
 4. The VPS is verified to have: TLS with a valid certificate, HTTP→HTTPS redirect, MongoDB bound to loopback with authentication, a firewall that exposes only 22/80/443, no published 27017, and no publicly reachable `.env`. — **Outstanding** (requires the target VPS).
 5. A backup has been taken **and a restore has been rehearsed**. — **Outstanding** (task B5).

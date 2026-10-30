@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick, onBeforeUnmount } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { startPolling } from '../utils/polling.js'
+import { useChatStore } from '../stores/chat.js'
+import EmptyState from './ui/EmptyState.vue'
+import BaseButton from './ui/BaseButton.vue'
+import BaseBadge from './ui/BaseBadge.vue'
+import AppIcon from './ui/AppIcon.vue'
 
 interface Channel {
   id: string
@@ -17,22 +22,19 @@ interface Message {
 }
 
 const route = useRoute()
-const router = useRouter()
+const store = useChatStore()
 
-const channels = ref<Channel[]>([])
 const currentChannel = ref<Channel | null>(null)
 const messages = ref<Message[]>([])
 const newMessage = ref('')
-const userId = ref<string | null>(null)
 const isJoined = ref(false)
 const membershipChecked = ref(false)
 // `true` until the channel named by the route has been resolved, so a cold load
-// never flashes "Select a channel" / "No messages yet" before the fetch lands.
+// never flashes "No messages yet" before the fetch lands.
 const loadingChannel = ref(true)
 const loadingMessages = ref(false)
 const notFound = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
-const sidebarOpen = ref(false)
 
 // B7: pagination state for channel messages.
 const PAGE_SIZE = 50
@@ -48,41 +50,9 @@ const loadingMore = ref(false)
 const channelId = computed(() => String(route.params.id ?? ''))
 
 const apiBase = import.meta.env.VITE_API_URL
+const userId = computed(() => store.userId)
 
-// ✅ Fetch user info
-async function fetchUser() {
-  const resp = await fetch(`${apiBase}/api/penggunas/me`, {
-    credentials: 'include',
-  })
-
-  if (!resp.ok) {
-    await router.push('/login')
-    return
-  }
-
-  const data = await resp.json()
-
-  if (!data?.user) {
-    await router.push('/login')
-    return
-  }
-
-  userId.value = data.user.id
-}
-
-// ✅ Fetch all channels (sidebar)
-async function fetchChannels() {
-  const resp = await fetch(`${apiBase}/api/channels`, {
-    credentials: 'include',
-  })
-
-  if (!resp.ok) return
-
-  const data = await resp.json()
-  channels.value = data.docs ?? []
-}
-
-// ✅ Check membership
+// ✅ Check membership (kept component-local for its loading/refresh semantics)
 async function checkMembership(id: string) {
   isJoined.value = false
   membershipChecked.value = false
@@ -151,9 +121,6 @@ async function fetchMessages(id: string) {
 
 /**
  * Load the channel named by the current route param.
- *
- * Everything is fetched from the id alone, so a cold load (direct URL, refresh,
- * shared link) behaves exactly like an in-app navigation.
  */
 async function loadChannel(id: string) {
   loadingChannel.value = true
@@ -183,7 +150,6 @@ async function loadChannel(id: string) {
     }
 
     currentChannel.value = await resp.json()
-    sidebarOpen.value = false
 
     await checkMembership(id)
     await fetchMessages(id)
@@ -237,7 +203,7 @@ async function sendMessage() {
   }
 }
 
-// ✅ Join channel
+// ✅ Join channel — delegates to the shared store so the sidebar stays in sync.
 async function joinChannel() {
   if (!currentChannel.value || !userId.value) return
 
@@ -252,56 +218,11 @@ async function joinChannel() {
 
   if (resp.ok) {
     isJoined.value = true
+    await store.loadChannels()
     await fetchMessages(currentChannel.value.id)
   } else {
     console.error('Failed to join channel:', await resp.text())
   }
-}
-
-// ✅ Create new channel
-async function createChannel() {
-  const name = prompt('Enter new channel name:')
-  if (!name || !userId.value) return
-
-  const resp = await fetch(`${apiBase}/api/channels`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      channel_name: name,
-    }),
-  })
-
-  if (!resp.ok) return console.error('Failed to create channel:', await resp.text())
-
-  const channelData = await resp.json()
-  const newChannel = channelData.doc
-
-  await fetch(`${apiBase}/api/memberships`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      channel_id: newChannel.id,
-    }),
-  })
-
-  await fetchChannels()
-  await goToChannel(newChannel)
-}
-
-/** Navigate by id only — never by channel object. */
-function goToChannel(channel: Pick<Channel, 'id'> | string | number) {
-  const id = channel && typeof channel === 'object' ? channel.id : channel
-
-  if (id === null || id === undefined || id === '') return
-
-  if (String(id) === channelId.value) {
-    sidebarOpen.value = false
-    return
-  }
-
-  router.push({ name: 'ChannelChatroom', params: { id: String(id) } })
 }
 
 function isOwn(msg: Message) {
@@ -317,14 +238,7 @@ function isFirstInGroup(index: number) {
 
 function formatTime(dateStr: string) {
   const d = new Date(dateStr)
-  return `${d.getHours().toString().padStart(2, '0')}:${d
-    .getMinutes()
-    .toString()
-    .padStart(2, '0')}`
-}
-
-function goToDashboard() {
-  router.push('/dashboard')
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
 let stopPolling: (() => void) | null = null
@@ -336,8 +250,7 @@ watch(channelId, (id, previous) => {
 })
 
 onMounted(async () => {
-  await fetchUser()
-  await fetchChannels()
+  if (!store.me) await store.fetchMe()
   await loadChannel(channelId.value)
 
   // B7: auto-refresh with exponential backoff, paused while the tab is hidden.
@@ -359,441 +272,283 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="chatroom-container">
-    <!-- Sidebar -->
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
-      <div class="sidebar-header">
-        <h2>Channels</h2>
-        <button class="close-btn" @click="sidebarOpen = false">✕</button>
+  <div class="thread">
+    <header class="thread__header">
+      <BaseButton
+        to="/dashboard"
+        variant="ghost"
+        icon="arrow-left"
+        icon-only
+        label="Back to dashboard"
+        class="thread__back"
+      />
+      <div class="thread__title-wrap">
+        <h1 class="thread__title">
+          <template v-if="notFound">Channel not found</template>
+          <template v-else-if="loadingChannel">Loading…</template>
+          <template v-else>
+            <AppIcon name="hash" :size="18" class="thread__hash" />{{
+              currentChannel?.channel_name || 'Channel'
+            }}
+          </template>
+        </h1>
+        <p v-if="!notFound && !loadingChannel && membershipChecked" class="thread__subtitle">
+          <BaseBadge :variant="isJoined ? 'success' : 'neutral'">
+            {{ isJoined ? 'Member' : 'Not a member' }}
+          </BaseBadge>
+        </p>
       </div>
-      <ul class="channel-list">
-        <li
-          v-for="channel in channels"
-          :key="channel.id"
-          class="channel-row"
-          :class="{ active: String(channel.id) === channelId }"
-          @click="goToChannel(channel)"
-        >
-          <span class="channel-name"># {{ channel.channel_name }}</span>
-        </li>
-      </ul>
-      <button class="create-btn" @click="createChannel">+ New Channel</button>
-    </aside>
+      <BaseButton v-if="membershipChecked && !isJoined && !notFound" size="sm" @click="joinChannel">
+        Join channel
+      </BaseButton>
+    </header>
 
-    <!-- Main -->
-    <main class="chat-main">
-      <header class="chat-header">
-        <div class="header-left">
-          <button class="menu-btn" @click="sidebarOpen = !sidebarOpen">☰</button>
-          <h2 class="chat-title">
-            <template v-if="notFound">Channel not found</template>
-            <template v-else-if="loadingChannel">Loading…</template>
-            <template v-else># {{ currentChannel?.channel_name || 'Select a channel' }}</template>
-          </h2>
-        </div>
-        <div class="header-actions">
-          <button class="back-btn" @click="goToDashboard">← Dashboard</button>
-          <button class="join-btn" v-if="membershipChecked && !isJoined && !notFound" @click="joinChannel">
-            Join
+    <div ref="messagesContainer" class="thread__body">
+      <EmptyState
+        v-if="notFound"
+        icon="alert"
+        title="Channel not found"
+        text="This channel does not exist, or you no longer have access to it."
+      />
+
+      <template v-else>
+        <div v-if="hasMore && !loadingChannel" class="load-older-row">
+          <button class="load-older-btn" :disabled="loadingMore" @click="loadOlder">
+            {{ loadingMore ? 'Loading…' : 'Load older messages' }}
           </button>
         </div>
-      </header>
 
-      <div class="chat-messages" ref="messagesContainer">
-        <div v-if="notFound" class="empty-chat">
-          <p>This channel does not exist, or you no longer have access to it.</p>
-        </div>
-
-        <template v-else>
-          <div v-if="hasMore && !loadingChannel" class="load-older-row">
-            <button class="load-older-btn" @click="loadOlder" :disabled="loadingMore">
-              {{ loadingMore ? 'Loading…' : 'Load older messages' }}
-            </button>
-          </div>
-
-          <div v-if="!messages.length && !loadingMessages && !loadingChannel" class="empty-chat">
-            <p>No messages yet. Say hi!</p>
-          </div>
-
-          <div
-            v-for="(msg, index) in messages"
-            :key="msg.id"
-            :class="['message', isOwn(msg) ? 'own' : 'received']"
-          >
-            <div v-if="isFirstInGroup(index)" class="meta">
-              <span v-if="!isOwn(msg)" class="sender">{{ msg.sender_username }}</span>
-              <span class="time">{{ formatTime(msg.createdAt) }}</span>
-            </div>
-            <p class="bubble">{{ msg.message }}</p>
-          </div>
-        </template>
-      </div>
-
-      <footer v-if="!loadingChannel && isJoined" class="composer">
-        <input
-          v-model="newMessage"
-          class="composer-input"
-          placeholder="Type a message..."
-          @keyup.enter="sendMessage"
+        <EmptyState
+          v-if="!messages.length && !loadingMessages && !loadingChannel"
+          icon="message"
+          text="No messages yet. Say hi!"
         />
-        <button class="composer-send" @click="sendMessage" :disabled="!newMessage.trim()">
-          Send
-        </button>
-      </footer>
 
-      <!-- Not a member yet: keep the pane height stable and offer to join. -->
-      <footer v-else-if="!loadingChannel && membershipChecked && !notFound" class="composer join-prompt">
-        <span class="hint">Join this channel to send messages.</span>
-        <button class="join-btn" @click="joinChannel">Join</button>
-      </footer>
-    </main>
+        <div
+          v-for="(msg, index) in messages"
+          :key="msg.id"
+          class="message"
+          :class="isOwn(msg) ? 'message--own' : 'message--them'"
+        >
+          <div v-if="isFirstInGroup(index)" class="message__meta">
+            <span v-if="!isOwn(msg)" class="message__sender">{{ msg.sender_username }}</span>
+            <span class="message__time">{{ formatTime(msg.createdAt) }}</span>
+          </div>
+          <p class="bubble">{{ msg.message }}</p>
+        </div>
+      </template>
+    </div>
+
+    <form v-if="!loadingChannel && isJoined" class="composer" @submit.prevent="sendMessage">
+      <input
+        v-model="newMessage"
+        class="composer__input"
+        type="text"
+        placeholder="Type a message…"
+        aria-label="Message"
+      />
+      <button
+        type="submit"
+        class="composer__send"
+        :disabled="!newMessage.trim()"
+        aria-label="Send message"
+      >
+        <AppIcon name="send" :size="18" />
+      </button>
+    </form>
+
+    <footer
+      v-else-if="!loadingChannel && membershipChecked && !notFound"
+      class="composer composer--prompt"
+    >
+      <span class="composer__hint">Join this channel to send messages.</span>
+      <BaseButton size="sm" @click="joinChannel">Join</BaseButton>
+    </footer>
   </div>
 </template>
 
 <style scoped>
-/* ===== Base Layout ===== */
-.chatroom-container {
-  display: flex;
-  height: 100vh;
-  height: 100dvh;
-  background: var(--bg);
-  color: var(--text);
-  overflow: hidden;
-}
-
-/* ===== Sidebar ===== */
-.sidebar {
-  width: 260px;
-  flex: 0 0 260px;
-  background: var(--bg);
-  border-right: 1px solid var(--border);
-  padding: 1rem;
+.thread {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
-  transition: transform 0.3s ease;
-}
-.sidebar-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.sidebar-header h2 {
-  font-size: 1rem;
-  margin: 0;
-}
-.close-btn {
-  display: none;
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 1.2rem;
-  cursor: pointer;
-}
-.channel-list {
-  list-style: none;
-  padding: 0;
-  margin: 1rem 0;
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-}
-.channel-list li.channel-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 0.5rem 0.8rem;
-  border-radius: var(--radius);
-  cursor: pointer;
-  margin-bottom: 4px;
-  transition: background 0.2s;
-}
-.channel-list li.channel-row:hover {
-  background: var(--surface);
-}
-.channel-list li.channel-row.active {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
 }
 
-.channel-name {
+.thread__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex: 0 0 auto;
+}
+
+.thread__back {
+  flex: 0 0 auto;
+}
+
+.thread__title-wrap {
   min-width: 0;
+  flex: 1;
+}
+
+.thread__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.create-btn {
-  flex: 0 0 auto;
-  background: var(--accent);
-  border: none;
-  color: #fff;
-  padding: 0.6rem;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.create-btn:hover {
-  background: var(--accent-hover);
+.thread__hash {
+  color: var(--color-text-muted);
 }
 
-/* ===== Main Chat Area ===== */
-.chat-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--bg);
-}
-.chat-header {
-  padding: 0.9rem 1rem;
-  background: var(--surface);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--border);
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-}
-.chat-title {
-  margin: 0;
-  font-size: 1.05rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 0 0 auto;
-}
-.menu-btn {
-  display: none;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 0.35rem 0.55rem;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.back-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 0.4rem 0.8rem;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-.back-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.join-btn {
-  background: var(--accent);
-  border: none;
-  color: #fff;
-  padding: 0.4rem 1rem;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-.join-btn:hover {
-  background: var(--accent-hover);
+.thread__subtitle {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
 }
 
-/* ===== Messages ===== */
-.chat-messages {
+.thread__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .load-older-row {
   display: flex;
   justify-content: center;
-  padding-bottom: 0.5rem;
+  padding-bottom: var(--space-2);
 }
 .load-older-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   border-radius: var(--radius-pill);
-  padding: 0.35rem 0.9rem;
-  font-size: 0.8rem;
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 .load-older-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .message {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  /*
-   * The messages container is a column flex box, so a `.message` flex item
-   * defaults to shrink-to-fit on the cross axis. That narrow box then becomes
-   * the reference for the bubble's own `fit-content`/`max-width`, collapsing
-   * short messages into a per-character vertical pill. Stretching the row to
-   * the full width makes `max-width: 65%` (on `.bubble`) resolve against the
-   * pane instead of against the message's own content.
-   */
+  /* Stretch the row so the bubble's max-width resolves against the pane. */
   align-self: stretch;
   width: 100%;
   min-width: 0;
   max-width: 100%;
+  align-items: flex-start;
 }
-.message.own {
+.message--own {
   align-items: flex-end;
 }
 
+.message__meta {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  margin-bottom: 2px;
+  padding: 0 var(--space-1);
+}
+.message__sender {
+  font-weight: var(--fw-semibold);
+}
+
 .bubble {
-  /*
-   * `fit-content` is deliberately avoided: combined with the parent row it
-   * produced a min-content-width bubble. `max-content` sizes the bubble to the
-   * text and `max-width` caps long lines, which is the intended behaviour.
-   */
   width: max-content;
-  max-width: 65%;
+  max-width: min(65%, 560px);
   margin: 0;
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  line-height: 1.45;
-  /*
-   * `anywhere` shrinks min-content to a single character, so a constrained
-   * bubble wraps one letter per line. `break-word` only breaks a word that
-   * cannot fit on a line of its own.
-   */
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  line-height: var(--lh-normal);
   overflow-wrap: break-word;
 }
-.received .bubble {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
+.message--them .bubble {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
 }
-.own .bubble {
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  color: #fff;
-}
-
-.meta {
-  display: flex;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-.meta .sender {
-  font-weight: 600;
+.message--own .bubble {
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  color: var(--color-on-primary);
 }
 
-.empty-chat {
-  margin: auto;
-  color: var(--muted);
-  text-align: center;
-  padding: 32px 16px;
-  font-size: 14px;
-}
-.empty-chat p {
-  margin: 0;
-}
-
-/* ===== Composer ===== */
+/* Composer */
 .composer {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
   flex: 0 0 auto;
 }
-.composer-input {
-  flex: 1;
-  min-width: 0;
-  height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text);
-}
-.composer-input::placeholder {
-  color: var(--muted);
-}
-.composer-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
-}
-.composer-send {
-  flex: 0 0 auto;
-  height: 44px;
-  padding: 0 20px;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.composer-send:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-.composer-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.composer.join-prompt {
+
+.composer--prompt {
   justify-content: space-between;
   min-height: 68px;
 }
-.composer .hint {
-  color: var(--muted);
-  font-size: 13px;
+
+.composer__hint {
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
 }
 
-/* ===== Mobile Responsiveness ===== */
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  outline: none;
+}
+.composer__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+.composer__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.composer__send:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+.composer__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
-  .sidebar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    transform: translateX(-100%);
-    z-index: 10;
-  }
-  .sidebar.open {
-    transform: translateX(0);
-  }
-  .close-btn {
-    display: block;
-  }
-  .menu-btn {
-    display: block;
-  }
-  .chat-main {
-    flex: 1;
-    position: relative;
-  }
   .bubble {
     max-width: 85%;
   }

@@ -40,8 +40,8 @@ while the tab is hidden and refreshes on `visibilitychange` (B7). Message lists 
 This is a **single git repository containing two independent applications** — *not* a workspace/monorepo:
 
 ```
-vue-chatapps-public/            <- git repo root (single branch: main, 6 commits)
-├── payload-be/                  <- Payload CMS backend (npm lockfile, declares pnpm in engines)
+vue-chatapps-public/            <- git repo root (single branch: main, 7 commits)
+├── payload-be/                  <- Payload CMS backend (npm lockfile; engines declare node/npm)
 └── vue-frontend/                <- Vue SPA (npm lockfile)
 ```
 
@@ -57,27 +57,26 @@ Versions below are read from the committed `package-lock.json` files (lockfileVe
 
 | Package | Declared | Locked | Notes |
 |---|---|---|---|
-| `payload` | `3.70.0` | 3.70.0 | Core CMS/framework |
-| `@payloadcms/next` | `3.70.0` | 3.70.0 | Next.js integration, REST/GraphQL route handlers |
-| `@payloadcms/db-mongodb` | `3.70.0` | 3.70.0 | MongoDB adapter (mongoose) |
-| `@payloadcms/ui` | `3.70.0` | 3.70.0 | Admin Panel |
-| `@payloadcms/richtext-lexical` | `3.70.0` | 3.70.0 | Lexical editor (no richText field is actually used) |
-| `@payloadcms/email-nodemailer` | `^3.70.0` | 3.70.0 | **Installed but never wired into the config** — no `email:` key in `payload.config.ts` |
-| `@payloadcms/payload-cloud` | `3.70.0` | 3.70.0 | Plugin registered, but no cloud adapter configured |
-| `next` | `15.5.9` | 15.5.9 | **20+ published advisories outstanding** (see security audit SEC-006) |
-| `react` / `react-dom` | `^19.2.3` | — | Payload Admin Panel requires React 19 for 3.70 |
-| `mongoose` | (transitive) | 8.15.1 | Behind `@payloadcms/db-mongodb` |
-| `sharp` | `0.34.2` | 0.34.2 | Image processing; 3 libvips/libheif/librsvg advisories outstanding |
-| `graphql` | `^16.8.1` | 16.12.0 | GraphQL API surface |
-| `dompurify` | `^3.3.1` | 3.3.1 | **Unused** — no import anywhere in `src/` |
-| `monaco-editor` | `^0.55.1` | 0.55.1 | **Unused** — no import anywhere in `src/` |
+| `payload` | `3.92.1` | 3.92.1 | Core CMS/framework. **Remediated** (A3, SEC-006/007) |
+| `@payloadcms/next` | `3.92.1` | 3.92.1 | Next.js integration, REST route handlers |
+| `@payloadcms/db-mongodb` | `3.92.1` | 3.92.1 | MongoDB adapter (mongoose) |
+| `@payloadcms/ui` | `3.92.1` | 3.92.1 | Admin Panel |
+| `@payloadcms/richtext-lexical` | `^3.78.0` | 3.92.x (resolved) | Lexical editor (no richText field is actually used). **Declared range is `^3.78.0`, not pinned to 3.92.1** |
+| `@payloadcms/email-nodemailer` | `3.92.1` | 3.92.1 | **Wired** via `src/config/email.ts` (`buildEmailAdapter()`, used by the password-reset flow, B1) |
+| `@payloadcms/payload-cloud` | `3.92.1` | 3.92.1 | Plugin registered, but no cloud adapter configured |
+| `next` | `16.4.3` | 16.4.3 | **Remediated** (A3, SEC-006) |
+| `react` / `react-dom` | `19.2.6` | 19.2.6 | Payload Admin Panel requires React 19 |
+| `mongoose` | (transitive) | 8.24.1 | Behind `@payloadcms/db-mongodb`; **remediated** (A3, SEC-011) |
+| `sharp` | `0.35.5` | 0.35.5 | Image processing; **remediated** (A3, SEC-011) |
+| `graphql` | `^16.8.1` | 16.12.0 | Installed, but the API surface is disabled (`graphQL.disable: true`, A9) |
 | `cross-env`, `dotenv` | — | — | Used by npm scripts / test setup |
-| `yjs` | `^13.6.29` | — | Unused by application code (Payload internal dependency) |
 
-Tooling: TypeScript 5.7.3, ESLint 9 + `eslint-config-next`, Prettier 3.4.2, Vitest 3.2.3 (integration), Playwright 1.57 (e2e).
+Tooling: TypeScript 5.7.3, ESLint 9 + `eslint-config-next` (native flat config), Prettier 3.4.2, Vitest 4.x (integration), Playwright 1.63 (e2e). `package.json` also carries an `overrides` block (`happy-dom`, `graphql-scalars`) and a `pnpm.onlyBuiltDependencies` block (`sharp`, `esbuild`, `unrs-resolver`).
 
-Declared runtime (`payload-be/package.json` → `engines`): `node ^18.20.2 || >=20.9.0`, `pnpm ^9 || ^10`.
-**Inconsistency:** the committed lockfile is `package-lock.json` (npm), and `pnpm-lock.yaml` is absent. The Docker Compose command runs `pnpm install`, which will resolve fresh versions rather than honouring the committed lockfile.
+> Historical note (as-audited `1b33cc7`): `payload`/`@payloadcms/*` were `3.70.0`, `next` was `15.5.9`, `sharp` `0.34.2`, `mongoose` `8.15.1`, and the unused `dompurify` / `monaco-editor` / `yjs` dependencies were present. Those were removed or upgraded in Stage A (tasks A3, SEC-016).
+
+Declared runtime (`payload-be/package.json` → `engines`): `node ^22.23.4 || >=24.22.1`, `npm >=10`.
+The committed lockfile is `package-lock.json` (npm), and `pnpm-lock.yaml` is absent. The Docker Compose command runs `npm ci`, so the committed lockfile is honoured and container builds are reproducible (A7, SEC-012).
 
 ### Frontend — `vue-frontend/`
 
@@ -86,7 +85,7 @@ Declared runtime (`payload-be/package.json` → `engines`): `node ^18.20.2 || >=
 | `vue` | `^3.5.22` | 3.5.22 | SPA framework |
 | `vue-router` | `^4.6.3` | 4.6.3 | History-mode routing |
 | `pinia` | `^3.0.3` | 3.0.3 | **Only the unused `counter` demo store exists** |
-| `qs` | `^6.14.0` | 6.14.0 | Query-string builder for Payload `where` clauses |
+| `qs` | `^6.17.1` | 6.17.1 | Query-string builder for Payload `where` clauses; **remediated** (A3, SEC-011) |
 | `vite` | `^7.1.11` | 7.1.12 | Build tool; dev-server advisories apply to dev only |
 | `@vitejs/plugin-vue` | `^6.0.1` | 6.0.1 | |
 
@@ -135,16 +134,30 @@ payload-be/
 ├── tests/
 │   ├── int/api.int.spec.ts      # vitest — one smoke test ("fetches users")
 │   └── e2e/frontend.e2e.spec.ts # playwright — asserts the Payload template homepage
-├── next.config.mjs              # withPayload() wrapper + webpack extension aliases
-├── vitest.config.mts            # jsdom, include tests/int/**/*.int.spec.ts
-├── playwright.config.ts         # webServer: `pnpm dev` on :3000
+│   │   ├── endpoints/
+│   │   │   ├── directory.ts      # GET /api/penggunas/directory (search-based, SEC-013)
+│   │   │   └── health.ts         # GET /api/health, DB round-trip (B4)
+│   │   └── config/
+│   │       ├── env.ts            # SERVER_URL / FRONTEND_ORIGINS / COOKIE_SECURE / requireEnv (A5)
+│   │       └── email.ts          # buildEmailAdapter() + password-reset email (B1)
+│   └── access/
+│       └── index.ts             # shared access predicates (isAdmin, isSelf, ...) (A1)
+├── tests/
+│   ├── int/                     # 8 files, 74 test blocks (authz.*, uploads, api.int, helpers)
+│   └── e2e/frontend.e2e.spec.ts # playwright — asserts the SPA mounts + anti-framing headers
+├── next.config.mjs              # withPayload() wrapper + webpack extension aliases + turbopack root
+├── vitest.config.mts            # node env 'int' project, include tests/int/**/*.spec.ts
+├── playwright.config.ts         # webServer starts the dev server
 ├── tsconfig.json                # paths: @/* -> ./src/*, @payload-config -> ./src/payload.config.ts
 ├── eslint.config.mjs, .prettierrc.json
-├── Dockerfile                   # node:20-alpine, multi-stage-less, USER app
-├── docker-compose.yml           # payload (node:18-alpine) + mongo:latest
-├── .env.example                 # DATABASE_URI, PAYLOAD_SECRET (placeholders only)
+├── Dockerfile                   # node:22-alpine, multi-stage (deps/build/prod-deps/runtime), USER app
+├── docker-compose.yml           # payload (node:22-alpine, npm ci) + mongo:7 (auth, not published)
+├── .env.example                 # DATABASE_URI, PAYLOAD_SECRET, SERVER_URL, FRONTEND_ORIGINS, SMTP_*
 ├── .npmrc                       # legacy-peer-deps=true
 ├── .yarnrc                      # --install.ignore-engines true
+├── .dockerignore                # excludes .env / node_modules / .next / media
+├── nginx/media-origin.conf      # isolated media origin (SEC-004)
+├── scripts/                     # create-first-admin.ts, quarantine-legacy-media.ts
 └── package.json / package-lock.json
 ```
 
@@ -158,29 +171,43 @@ vue-frontend/
 │   ├── main.js                  # createApp + Pinia + Router
 │   ├── App.vue                  # <RouterView/> only
 │   ├── env.d.ts
-│   ├── router/index.js          # 10 routes, no guards
-│   ├── stores/counter.js        # unused Pinia demo store
+│   ├── router/index.js          # AppLayout + child routes + global beforeEach guard (B2 / SEC-015)
+│   ├── stores/chat.js           # shared session/channel/membership store
+│   ├── utils/polling.js         # startPolling: exponential backoff + visibility pause (B7)
 │   ├── components/
-│   │   ├── Login.vue            # register/login forms
-│   │   ├── Register.vue
-│   │   ├── Dashboard.vue        # main app shell: channels, user list, create/join
-│   │   ├── Chat.vue             # direct-message view
-│   │   ├── ChannelChatroom.vue  # channel message view (current, used by /channel/:id)
-│   │   ├── Channel.vue          # legacy/unused channel view (stale field names)
-│   │   ├── Browse.vue           # legacy/unused user browser (hardcoded localhost URL)
-│   │   ├── CreateChannel.vue    # legacy/unused create form
-│   │   ├── HelloWorld.vue, TheWelcome.vue, WelcomeItem.vue, icons/  # template leftovers
-│   └── assets/                  # main.css, base.css, main_old.css, logo.svg
+│   │   ├── ui/                  # AppIcon, BaseButton/Input/Avatar/Card/Badge,
+│   │   │                        # EmptyState, LoadingIndicator, PageHeader
+│   │   ├── layout/              # AppLayout, AppHeader, AppSidebar, AuthLayout, PublicLayout
+│   │   ├── Login.vue            # login form (AuthLayout)
+│   │   ├── Register.vue         # registration form (AuthLayout)
+│   │   ├── Dashboard.vue        # dashboard overview (shared app shell)
+│   │   ├── Chat.vue             # direct-message thread (paginated, backoff polling)
+│   │   ├── ChannelChatroom.vue  # channel message thread (used by /channel/:id)
+│   ├── views/                   # HomeView, AboutView, LoginView, RegisterView,
+│   │   │                        # ForgotPasswordView, ResetPasswordView, DashboardView,
+│   │   │                        # ChatView, ChannelChatroomView
+│   └── assets/                  # main.css (design tokens)
 ├── public/favicon.ico
 ├── index.html                   # title: "Aplikasi Chat Sederhana"
 ├── vite.config.js               # @ alias -> ./src, outDir: dist
 ├── eslint.config.js, .prettierrc.json, .editorconfig, .gitattributes
-├── Dockerfile                   # node:20-alpine build -> nginx:alpine
-├── default.conf                 # nginx vhost (HTTP only)
+├── Dockerfile                   # node:22-alpine build -> nginx:alpine (EXPOSE 80 443)
+├── default.conf                 # TLS-terminating nginx vhost + security headers (A7/A8)
+├── proxy_params.inc             # shared proxy headers for the /api/ locations
 └── package.json / package-lock.json
 ```
 
-**Dead code:** `Browse.vue`, `CreateChannel.vue`, `Channel.vue`, `TheWelcome.vue`, `WelcomeItem.vue`, `HelloWorld.vue`, `stores/counter.js` are not reachable from any route that the SPA actually uses for the chat product. `BrowseView.vue` / `CreateChannelView.vue` do exist as routes and do import them.
+> **UI refactor (2026-10-30).** The frontend tree above reflects the unified design system
+> (tokens in `assets/main.css`, primitives in `components/ui/`, layouts in `components/layout/`,
+> shared state in `stores/chat.js`). The former dead code — `Channel.vue`/`ChannelView.vue`, the
+> template leftovers (`TheWelcome.vue`, `WelcomeItem.vue`, `HelloWorld.vue`, `icons/`), the
+> `stores/counter.js` demo store, and `assets/base.css`/`assets/main_old.css` — has been removed.
+> `Browse.vue`/`CreateChannel.vue` and their views were removed and `/browse` + `/create` are now
+> redirects to `/dashboard`. See [`UI_REFACTORING_REPORT.md`](./UI_REFACTORING_REPORT.md),
+> [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) and [`LAYOUT_AND_NAVIGATION.md`](./LAYOUT_AND_NAVIGATION.md).
+> The paragraphs below describing the pre-refactor layout are retained as the as-audited record.
+
+**Dead code:** `Channel.vue` is imported only by `ChannelView.vue`, which is **not routed** — so both are dead. `TheWelcome.vue`, `WelcomeItem.vue`, `HelloWorld.vue` and `stores/counter.js` are template leftovers, unreachable from the chat product. `BrowseView.vue` and `CreateChannelView.vue` *are* routed (`/browse`, `/create`) and import `Browse.vue` / `CreateChannel.vue`, so those two components remain reachable (even though the product flow does not need them).
 
 ### Generated / non-source artifacts
 
@@ -196,13 +223,18 @@ vue-frontend/
 
 | Component | Responsibility | Notes |
 |---|---|---|
-| `payload-be/src/payload.config.ts` | Root Payload config: collections, Mongo adapter, CORS/CSRF allow-lists, secret, sharp, plugins | Single source of server-side truth |
-| `payload-be/src/collections/*` | The entire domain model and **all** authorization policy | Only 7 small files; no hooks, no custom endpoints, no validation beyond field `required` |
-| `payload-be/src/app/(payload)/api/[...slug]/route.ts` | Exposes Payload's full REST API | Generated |
-| `payload-be/src/app/(payload)/api/graphql/route.ts` | Exposes Payload's full GraphQL API | Generated. Playground is disabled in production by Payload default |
+| `payload-be/src/payload.config.ts` | Root Payload config: collections, Mongo adapter, CORS/CSRF allow-lists, secret, sharp, plugins, upload parser bounds, `graphQL.disable`, health endpoint | Single source of server-side truth |
+| `payload-be/src/access/index.ts` | Shared access predicates (`isAdmin`, `isSelf`, `isAuthenticated`, per-field rules) | Added in Stage A (A1) |
+| `payload-be/src/config/env.ts` | Environment-driven config: `SERVER_URL`, `FRONTEND_ORIGINS`, `COOKIE_SECURE`, `APP_URL`, `requireEnv` | A5 / B1 |
+| `payload-be/src/config/email.ts` | Nodemailer adapter + password-reset email/link builder | B1 |
+| `payload-be/src/endpoints/health.ts` | `GET /api/health` — DB round-trip, 200/503 | B4 |
+| `payload-be/src/endpoints/directory.ts` | `GET /api/penggunas/directory` — search-based, email-free | SEC-013 |
+| `payload-be/src/collections/*` | The entire domain model and **all** authorization policy | Per-document access + `beforeChange` identity hooks (A1/A2) |
+| `payload-be/src/app/(payload)/api/[...slug]/route.ts` | Exposes Payload's REST API | Generated |
+| `payload-be/src/app/(payload)/api/graphql/route.ts` | GraphQL route file still present | Generated, but the surface is **disabled** (`graphQL.disable: true`, A9) |
 | `payload-be/src/app/(payload)/admin/**` | Payload Admin Panel at `/admin` | Generated; `admin.user = users` |
-| `payload-be/src/app/(frontend)/page.tsx` | **Unmodified Payload template landing page** at `/` | Ships the "Welcome to your new project." text and a link to the admin panel |
-| `payload-be/src/app/my-route/route.ts` | Unmodified template example route | Returns a static JSON string; no auth |
+| `payload-be/src/app/(frontend)/page.tsx` | Unmodified Payload template landing page at `/` | Ships the "Welcome to your new project." text and a link to the admin panel (Stage C3) |
+| `payload-be/src/app/my-route/route.ts` | Unmodified template example route | Boots Payload then returns a static JSON string; no auth (Stage C3) |
 | `vue-frontend/src/router/index.js` | Route table | Global `beforeEach` guard; `meta.public` routes (B2) |
 | `vue-frontend/src/utils/polling.js` | Shared polling helper | Exponential backoff + visibility pause (B7) |
 | `vue-frontend/src/views/ForgotPasswordView.vue` / `ResetPasswordView.vue` | Password reset | Public routes (B1) |
@@ -211,9 +243,9 @@ vue-frontend/
 | `vue-frontend/src/components/ChannelChatroom.vue` | Channel messages + channel list + create/join | Backoff polling (3 s base) + pagination |
 | `vue-frontend/src/components/Login.vue` / `Register.vue` | Credentials → `penggunas` collection | `credentials: 'include'` |
 | `vue-frontend/src/stores/counter.js` | Pinia demo store | Unused |
-| `payload-be/Dockerfile` | Container image for the backend | Single stage; `EXPOSE 50010` does not match the app's real port |
-| `vue-frontend/Dockerfile` | Container image: Vite build → nginx:alpine | Serves `dist/` on port 80 |
-| `vue-frontend/default.conf` | nginx vhost for the SPA | HTTP only, no security headers |
+| `payload-be/Dockerfile` | Container image for the backend | Multi-stage (deps/build/prod-deps/runtime), `node:22-alpine`, `USER app`, `EXPOSE 3000` |
+| `vue-frontend/Dockerfile` | Container image: Vite build → nginx:alpine | Serves `dist/`; `EXPOSE 80 443` |
+| `vue-frontend/default.conf` | nginx vhost for the SPA | TLS-terminating, full security headers, rate limit zones (A7/A8) |
 
 ---
 
@@ -235,9 +267,9 @@ graph TB
         end
 
         subgraph BE["Backend container"]
-            P["Payload CMS 3.70<br/>Next.js 15.5.9<br/>:3000"]
+            P["Payload CMS 3.92.1<br/>Next.js 16.4.3<br/>:3000"]
             A["/admin Panel<br/>(users collection)"]
-            R["/api REST + /api/graphql"]
+            R["/api REST (GraphQL disabled)"]
         end
 
         subgraph Data["Data tier"]
@@ -273,16 +305,16 @@ sequenceDiagram
     N->>P: proxy (HTTPS terminated)
     P->>P: parse cookie, run auth strategies<br/>(local-jwt) -> req.user
     P->>A: collection.access.create(req)
-    Note over A: Messages.access.create = () => true
+    Note over A: Messages.access.create = isAuthenticated(req)<br/>+ beforeChange requires channel membership
     A-->>P: allow
-    P->>P: field validation (required only)
+    P->>P: sender derived from req.user (beforeChange)
     P->>D: insert document
     D-->>P: stored doc
     P-->>V: 201 { doc }
     V->>B: push to local list
 ```
 
-**Trust-boundary note:** the diagram above shows the *current* behaviour. The critical gap is that step 2 — the sender identity is taken from the **request body**, not from `req.user`. See SEC-005.
+**Trust-boundary note (as-audited `1b33cc7`):** at audit time step 2 took the sender identity from the **request body** (`Messages.access.create = () => true`), which was SEC-005. This is now remediated (A1/A2): creation requires an authenticated session, the `Sender` is derived from `req.user` in a `beforeChange` hook, and the caller must be a member of the target channel.
 
 ---
 
@@ -304,8 +336,8 @@ sequenceDiagram
     Note over P: mismatch -> 401 "The email or password provided is incorrect."
     P->>P: sign JWT { collection, id, sid, exp }
     P->>D: append session { id, expiresAt } to user doc
-    P-->>B: Set-Cookie: payload-token=...; HttpOnly; Path=/; SameSite=Lax; Max-Age=7200
-    Note over P: Secure flag NOT set (config default secure:false)
+    P-->>B: Set-Cookie: payload-token=...; HttpOnly; Path=/; SameSite=Lax
+    Note over P: Secure flag set from COOKIE_SECURE (A5/SEC-008)
 
     B->>P: GET /api/penggunas/me (cookie)
     P->>P: verify JWT (jose), confirm session id still present
@@ -463,15 +495,17 @@ erDiagram
 
 ### Collection inventory
 
-| Collection | Purpose | Key fields | Relationships | Declared access | Effective access (Payload 3.70 defaults) |
+> The **effective access** column records the as-audited (`1b33cc7`) behaviour. The **declared access** column records the current code after the Stage A rewrite (A1/A2/B3).
+
+| Collection | Purpose | Key fields | Relationships | Declared access (current) | Effective access (as-audited) |
 |---|---|---|---|---|---|
-| `users` | Payload Admin Panel accounts | `email` (unique), `hash`, `salt` | — | `auth: true`, no `access` block | create/read/update/delete → `Boolean(req.user)` |
-| `penggunas` | Application accounts | `email` (unique), `username` (**not unique**), `hash`, `salt` | — | `create/read/update = () => true` | **anonymous** create/read/update; delete → `Boolean(req.user)` |
-| `media` | File uploads | `alt` (required), + generated upload fields | — | `read = () => true` | **anonymous** read; create/update/delete → `Boolean(req.user)` |
-| `chats` | 1:1 direct messages | `message`, `sender_id`, `receiver_id` | → `penggunas` ×2 | `create = () => true` | create **anonymous**; read/update/delete → `Boolean(req.user)` |
-| `channels` | Chat rooms | `channel_name` (required), `owner` (required) | → `penggunas` | `read/create/update/delete = () => true` | **all four anonymous** |
-| `memberships` | User ↔ channel join | `pengguna_id`, `channel_id` | → `penggunas`, `channels` | `read/create/delete = () => true` | **all three anonymous** |
-| `messages` | Channel messages | `Sender`, `Channel`, `message` (all required) | → `penggunas`, `channels` | `read/create = () => true` | **read anonymous**; update/delete → `Boolean(req.user)` |
+| `users` | Payload Admin Panel accounts | `email` (unique), `roles` (`admin`/`user`), `hash`, `salt` | — | every op → `isAdmin(req)` (admin role required, B3) | create/read/update/delete → `Boolean(req.user)` |
+| `penggunas` | Application accounts | `email` (unique), `username` (**unique**, validated), `password` (declared), `hash`, `salt` | — | `create = () => true`; `read = isAuthenticated`; `update`/`delete` = self-only | **anonymous** create/read/update; delete → `Boolean(req.user)` |
+| `media` | File uploads | `alt` (required), `uploadedBy`, + generated upload fields | → `penggunas`/`users` | all ops → `isAuthenticated(req)` | **anonymous** read; create/update/delete → `Boolean(req.user)` |
+| `chats` | 1:1 direct messages | `message`, `sender_id` (required, immutable), `receiver_id` | → `penggunas` ×2 | `create = isAuthenticated`; read = participant; update/delete = sender | create **anonymous**; read/update/delete → `Boolean(req.user)` |
+| `channels` | Chat rooms | `channel_name` (required), `owner` (required, immutable) | → `penggunas` | `create`/`read` = `isAuthenticated`; update/delete = owner | **all four anonymous** |
+| `memberships` | User ↔ channel join | `pengguna_id` (immutable), `channel_id` | → `penggunas`, `channels` | `create`/`read`/`update` = `isAuthenticated`; delete = own only | **all three anonymous** |
+| `messages` | Channel messages | `Sender` (required, immutable), `Channel`, `message` (all required) | → `penggunas`, `channels` | `create` = `isAuthenticated` + member; read = member's channels; update/delete = sender | **read anonymous**; update/delete → `Boolean(req.user)` |
 
 **Payload's default access control** (from `packages/payload/src/auth/defaultAccess.js`):
 
@@ -479,19 +513,20 @@ erDiagram
 const defaultAccess = ({ req: { user } }) => Boolean(user)
 ```
 
-Any operation whose `access` key is not overridden falls back to this. It is a **presence** check only — it carries no notion of ownership, membership or role.
+Any operation whose `access` key is not overridden falls back to this — a **presence** check only, with no notion of ownership, membership or role. After the Stage A rewrite, no collection relies on the fallback for a protected operation.
 
 ### Field-level access control
 
-**There is none.** No collection in `payload-be/src/collections/` declares a field-level `access` block. Consequences (all verified against the Payload 3.70 source):
+**As-audited, there was none.** Every collection in `payload-be/src/collections/` was unguarded at field level (verified against the Payload 3.70 source). This is now remediated (A1/A2):
 
-- The `email` and `username` fields of `penggunas` are readable and writable by anyone who can reach the collection.
-- The `password` field is not declared in the collection at all; Payload's `updateDocument` reads `data.password` directly from the request body and replaces it with a freshly computed `hash`/`salt` (`packages/payload/src/collections/operations/utilities/update.ts`). Combined with `penggunas.access.update = () => true`, **any caller can set a new password for any `penggunas` document** without knowing the current one. This is the root cause of SEC-001.
-- `hash` and `salt` are `hidden: true`, which removes them from *responses* but does not by itself prevent them from being *written*.
+- `penggunas.email` carries `read`/`update` field access (`penggunaEmailReadAccess` / `penggunaEmailUpdateAccess`): only the owner or an admin.
+- `penggunas.username` carries `read` (any authenticated user) / `update` (owner only) access.
+- `penggunas.password` is now **declared** with `access.update = penggunaPasswordUpdateAccess` (owner or admin only); a `beforeChange` hook independently rejects an unauthorised password write. This closes SEC-001.
+- `chats.sender_id`, `messages.Sender`, `memberships.pengguna_id`, `channels.owner` and `media.uploadedBy` declare `access.update = () => false` (immutable, identity bound to the session).
 
 ### Files and storage
 
-`media` is an upload collection with `upload: true` and **no `mimeTypes` restriction**, **no `filesize` limit**, and **no `imageSizes`**. Files are written to the local filesystem under `payload-be/media/` and served through `GET /api/media/file/:filename`. `Media.access.read = () => true` ⇒ **anonymous download of every uploaded file**. `sharp` is wired into the config, so image processing (resize/crop) is active for uploads that Payload recognises as images.
+As-audited, `media` had `upload: true` with **no `mimeTypes` restriction**, **no filesize limit** and anonymous read. This is now hardened (A4/SEC-004): `upload.mimeTypes` is restricted to raster types (`image/png`, `image/jpeg`, `image/webp`, `image/gif`), `allowRestrictedFileTypes: false`, `pasteURL: false`, `bulkUpload: false`, `crop`/`focalPoint: false`, a 5 MB cap (`MAX_UPLOAD_BYTES`) enforced in `beforeOperation`, `uploadedBy` bound to the session, and defensive response headers (`nosniff`, sandbox CSP, `Content-Disposition: attachment` for non-raster types). Files are written under `payload-be/media/` and served through `GET /api/media/file/:filename`, which now requires authentication.
 
 ---
 
@@ -517,36 +552,40 @@ Any operation whose `access` key is not overridden falls back to this. It is a *
 
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/api/graphql` | POST | Full GraphQL API. **Exposes the same data through a second interface** — every collection-level access-control finding applies to GraphQL as well. Query complexity is capped at 1000 by Payload default. |
+| `/api/graphql` | POST | **Disabled** — `graphQL.disable: true` in `payload.config.ts` (A9). The route file remains but the surface is off. |
 | `/api/graphql-playground` | GET | Disabled in production by Payload default (`disablePlaygroundInProduction: true`) |
 | `/api/access` | GET | Access reflection endpoint (used by the Admin Panel) |
-| `/api/users/...`, `/api/media/...` | * | Full REST surface for the admin collection and uploads |
-| `/admin` | * | Full Payload Admin Panel |
-| `/my-route` | GET | Unmodified template example route, no auth, returns a static string |
-| `/` | GET | Unmodified template landing page, links to `/admin` |
-| `/api/penggunas/first-register` | POST | **Creates the first `pengunas` account if none exists** — see SEC-007 (RCE advisory reachability) |
-| `/api/penggunas/forgot-password` | POST | Present, but **no email adapter is configured**, so the reset token is printed to the server log rather than emailed |
+| `/api/users/...`, `/api/media/...` | * | REST surface for the admin collection and uploads (now access-controlled) |
+| `/admin` | * | Payload Admin Panel. Publicly, the nginx vhost returns **404** for `/admin` (A9) |
+| `/my-route` | GET | Unmodified template example route, no auth, returns a static JSON string (Stage C3) |
+| `/` | GET | Unmodified template landing page, links to `/admin` (Stage C3) |
+| `/api/health` | GET | DB round-trip liveness/readiness, 200/503 (B4) |
+| `/api/penggunas/directory` | GET | Search-based, email-free user directory (`?q=` ≥ 2 chars, paginated) (SEC-013) |
+| `/api/penggunas/first-register` | POST | Payload default flow; the first admin is provisioned via `scripts/create-first-admin.ts` instead (A9) |
+| `/api/penggunas/forgot-password` | POST | Present. An email transport is wired from `SMTP_*` (`src/config/email.ts`); when unset, Payload logs the mail and — in non-production only — prints the reset link to the console (B1) |
 
 ### CORS and CSRF
 
-Configured in `payload-be/src/payload.config.ts:28-37`:
+Configured from the environment in `payload-be/src/config/env.ts`:
 
 ```ts
-cors:  ['http://103.103.21.102:50011', 'http://localhost:50011', 'http://localhost:5173'],
-csrf:  ['http://103.103.21.102:50011', 'http://localhost:50011', 'http://localhost:5173'],
+export const SERVER_URL = (process.env.SERVER_URL ?? '').trim()
+export const FRONTEND_ORIGINS = splitList(process.env.FRONTEND_ORIGINS)
+export const CORS_ORIGINS = FRONTEND_ORIGINS
+export const CSRF_ORIGINS = Array.from(new Set([...FRONTEND_ORIGINS, ...(SERVER_URL ? [SERVER_URL] : [])]))
 ```
 
-Payload's CORS middleware (`packages/payload/src/utilities/headersWithCors.ts`) sets `Access-Control-Allow-Credentials: true` and echoes the `Origin` for any origin on the allow-list, and sets `Access-Control-Allow-Origin: *` for the wildcard case. The current list contains a **plain-HTTP public IP** (`103.103.21.102:50011`) — see SEC-008.
+`payload.config.ts` then sets `serverURL: SERVER_URL || undefined`, `cors: CORS_ORIGINS`, `csrf: CSRF_ORIGINS`. Payload's CORS middleware (`packages/payload/src/utilities/headersWithCors.ts`) sets `Access-Control-Allow-Credentials: true` and echoes the `Origin` for any origin on the allow-list.
 
-`serverURL` is **not** set in the config, so `config.csrf` never receives the production origin automatically (`packages/payload/src/config/sanitize.js`).
+> Historical note (as-audited `1b33cc7`): both lists were hardcoded to `['http://103.103.21.102:50011', 'http://localhost:50011', 'http://localhost:5173']` — a plain-HTTP public IP — and `serverURL` was not set. This was SEC-008, now remediated (A5).
 
 ### Pagination, limits and validation
 
-- `defaultMaxTextLength` = 40000 (Payload default) — a single message may be up to 40 000 characters.
+- `defaultMaxTextLength` = **2000** (`MAX_TEXT_LENGTH` in `payload.config.ts`; Payload's default is 40 000) — a single message may be up to 2 000 characters (A8).
 - `defaultDepth` = 2, `maxDepth` = 10.
-- The SPA does **not** send `limit` or `page` on any list query, so Payload's default limit of 10 applies to `find` — but the SPA's DM query and the message query both rely on client-side sorting of the returned page, which means long conversations are silently truncated rather than paged.
-- No field in any collection declares `validate`; only `required: true` is used.
-- No `beforeValidate` / `beforeChange` / `afterRead` / `afterChange` hooks exist anywhere in the codebase.
+- The SPA's message lists now send `limit=50&page=n` and render a "Load older messages" control (B7); the DM and channel-message queries sort client-side over each fetched page.
+- `penggunas.username` declares a `validate` pattern (`/^[a-z0-9_]{3,24}$/`) and `required`/`unique`; password length is enforced in a `beforeValidate` hook (A6). Other fields use only `required: true`.
+- `beforeChange` hooks derive `sender_id`, `Sender`, `pengguna_id` and `owner` from `req.user` (A2); `penggunas` has `beforeValidate` (password/username) and `beforeChange` (password-write) hooks; `media` has `beforeOperation` (size) and `beforeValidate` (uploadedBy) hooks. There are still no `afterRead` / `afterChange` hooks.
 
 ---
 
@@ -601,23 +640,25 @@ Serve   : GET /api/media/file/:filename   → Media.access.read = ({ req: { user
 
 The repository contains two container definitions and one nginx vhost. They encode **development-era assumptions** and are not production-ready (details in [`deployment-guide.md`](./deployment-guide.md)).
 
-| Assumption | Where | Reality check |
+> The table below preserves the **as-audited** (`1b33cc7`) assumptions. Every row has since been addressed by tasks A5/A7 (Stage A); the "current state" column records the fix.
+
+| Assumption (as-audited) | Where | Current state (remediated) |
 |---|---|---|
-| Frontend is served by nginx on port 80, mapped to host port 50011 | `vue-frontend/Dockerfile:25`, `default.conf` | HTTP only, no TLS, no security headers, `server_name _` |
-| Backend listens on 3000 in dev, 50010 in the image | `docker-compose.yml:7`, `payload-be/Dockerfile:12` | `EXPOSE 50010` matches nothing; Next.js defaults to 3000 |
-| MongoDB is reachable on the network and published to the host | `docker-compose.yml:23` | `27017:27017` published to **0.0.0.0** |
-| `pnpm` is the package manager | `package.json` engines, `docker-compose.yml:12` | The committed lockfile is npm's `package-lock.json`; `pnpm install` would ignore it |
-| The frontend reaches the backend at a hardcoded origin | `payload.config.ts:29` | `http://103.103.21.102:50011` — plain HTTP, a public IP, hardcoded into source |
-| `DATABASE_URI` and `PAYLOAD_SECRET` come from `.env` | `payload-be/.env.example` | `.env` is gitignored (good); **no `.dockerignore` exists**, so `COPY . .` would bake a local `.env` into the image |
-| Node 18 / 20 | `docker-compose.yml:5` (`node:18-alpine`), both Dockerfiles (`node:20-alpine`) | Backend `engines` allow `^18.20.2 || >=20.9.0`; frontend requires `^20.19.0 || >=22.12.0` |
+| Frontend served by nginx on port 80, mapped to host port 50011 | `vue-frontend/Dockerfile`, `default.conf` | `default.conf` is now a TLS-terminating vhost with the full security header set and rate-limit zones (A7/A8) |
+| Backend listens on 3000 in dev, 50010 in the image | `docker-compose.yml`, `payload-be/Dockerfile` | Multi-stage Dockerfile, `EXPOSE 3000`; compose maps `3000:3000` (A7) |
+| MongoDB reachable on the network and published to the host | `docker-compose.yml` | `expose: 27017` only, MongoDB authentication enabled, `mongo:7` pinned (A7) |
+| `pnpm` is the package manager | `package.json`, `docker-compose.yml` | Compose runs `npm ci`; backend `engines` now declare `node`/`npm`. (A `pnpm.onlyBuiltDependencies` block remains harmless.) |
+| The frontend reaches the backend at a hardcoded origin | `payload.config.ts` | Origins come from `SERVER_URL` / `FRONTEND_ORIGINS` via `src/config/env.ts`; the hardcoded IP was removed (A5) |
+| `DATABASE_URI` and `PAYLOAD_SECRET` come from `.env` | `payload-be/.env.example` | `.env` is gitignored **and** `.dockerignore` files now exclude `.env`/`.env.*` from both images (A7) |
+| Node 18 / 20 | `docker-compose.yml`, both Dockerfiles | Both images use `node:22-alpine`; backend `engines` require `^22.23.4 || >=24.22.1` (A3/A7) |
 
 ---
 
 ## 14. Known architectural limitations
 
-> **Superseded in part (2026-10-30).** Items 1, 2, 5, 6, 7, 11 and 12 have been addressed by the
+> **Superseded in part (2026-10-30).** Items 1, 2, 4, 5, 6, 7, 11 and 12 have been addressed by the
 > Stage A remediation and Stage B work; they are retained here as the audited as-found state,
-> with the current status noted inline. Items 3, 4, 8, 9 and 10 remain open (Stages B7 / C).
+> with the current status noted inline. Items 3, 8, 9, 10 and 13 remain open (Stage C).
 
 1. ~~**No authorization model.**~~ **Resolved (Stage A).** Per-document access control is
    implemented across all 7 collections, with role-gated `users` (B3).
@@ -640,7 +681,7 @@ The repository contains two container definitions and one nginx vhost. They enco
    shapes (Stage C1).
 10. **Template residue shipped to production.** `/` serves the Payload template page and
     `/my-route` is still present (Stage C3).
-11. ~~**No automated tests of substance.**~~ **Resolved.** 80 integration tests cover the
+11. ~~**No automated tests of substance.**~~ **Resolved.** 73 `it` blocks / 79 test cases cover the
     authorization matrix, registration policy, uploads and password reset; the e2e test asserts
     the SPA mounts.
 12. ~~**No CI/CD, no health check endpoint, no metrics …**~~ **Partly resolved.** `GET /api/health`

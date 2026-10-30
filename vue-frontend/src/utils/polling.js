@@ -16,11 +16,7 @@
  * @param {number} [options.factor=2]         backoff multiplier
  */
 export function startPolling(task, options = {}) {
-  const {
-    baseDelay = 3000,
-    maxDelay = 30000,
-    factor = 2,
-  } = options
+  const { baseDelay = 3000, maxDelay = 30000, factor = 2 } = options
 
   let delay = baseDelay
   let timer = null

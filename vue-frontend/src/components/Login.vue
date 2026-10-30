@@ -1,215 +1,141 @@
-<template>
-  <div class="login-container">
-    <div class="login-card">
-      <h1 class="title">Welcome Back 👋</h1>
-      <p class="subtitle">Sign in to continue chatting</p>
+<script setup>
+import { ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import AuthLayout from './layout/AuthLayout.vue'
+import BaseInput from './ui/BaseInput.vue'
+import BaseButton from './ui/BaseButton.vue'
 
-      <form @submit.prevent="login" class="login-form">
-        <div class="form-group">
-          <label for="email">Email</label>
-          <input
-            type="email"
-            id="email"
-            v-model="email"
-            placeholder="Enter your email"
-            required
-          />
-        </div>
+const route = useRoute()
+const router = useRouter()
 
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input
-            type="password"
-            id="password"
-            v-model="password"
-            placeholder="Enter your password"
-            required
-          />
-        </div>
+const email = ref('')
+const password = ref('')
+const error = ref('')
+const loading = ref(false)
+const registered = ref(route.query.registered === '1')
 
-        <button type="submit" class="login-btn">Login</button>
-      </form>
+async function login() {
+  error.value = ''
+  loading.value = true
 
-      <p class="forgot-text">
-        <RouterLink to="/forgot-password" class="forgot-link">Forgot password?</RouterLink>
-      </p>
+  try {
+    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email.value,
+        password: password.value,
+      }),
+    })
 
-      <p class="register-text">
-        Don’t have an account?
-        <RouterLink to="/register" class="register-link">Register here</RouterLink>
-      </p>
-    </div>
-  </div>
-</template>
+    const text = await resp.text()
+    let body = null
+    try {
+      body = text ? JSON.parse(text) : null
+    } catch {
+      body = null
+    }
 
-<script>
-export default {
-  data() {
-    return {
-      email: "",
-      password: "",
-    };
-  },
-  methods: {
-    async login() {
-      try {
-        const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/login`, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: this.email,
-            password: this.password,
-          }),
-        });
+    if (!resp.ok) {
+      const errorMsg = body?.errors?.[0]?.message || `Login failed (${resp.status})`
+      throw new Error(errorMsg)
+    }
 
-        const text = await resp.text();
-        let body = null;
-        try {
-          body = text ? JSON.parse(text) : null;
-        } catch {
-          body = null;
-        }
+    if (!body) {
+      throw new Error(
+        'Server returned an empty response. Check VITE_API_URL and that the backend is running.',
+      )
+    }
 
-        if (!resp.ok) {
-          const errorMsg = body?.errors?.[0]?.message || `Login failed (${resp.status})`;
-          throw new Error(errorMsg);
-        }
-
-        if (!body) {
-          throw new Error(
-            "Server returned an empty response. Check VITE_API_URL and that the backend is running.",
-          );
-        }
-
-        console.log(body);
-
-        this.$router.push("/dashboard");
-      } catch (error) {
-        alert(error.message);
-      }
-    },
-  },
-};
+    router.push('/dashboard')
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
+<template>
+  <AuthLayout title="Welcome back" subtitle="Sign in to continue chatting">
+    <p v-if="registered" class="auth-form__success" role="status">
+      Account created. You can log in now.
+    </p>
+
+    <form class="auth-form" @submit.prevent="login">
+      <BaseInput
+        id="login-email"
+        v-model="email"
+        label="Email"
+        type="email"
+        placeholder="you@example.com"
+        autocomplete="email"
+        icon="user"
+        required
+      />
+      <BaseInput
+        id="login-password"
+        v-model="password"
+        label="Password"
+        type="password"
+        placeholder="Your password"
+        autocomplete="current-password"
+        required
+      />
+
+      <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
+
+      <BaseButton type="submit" size="lg" block :loading="loading">Log in</BaseButton>
+    </form>
+
+    <p class="auth-form__link">
+      <RouterLink to="/forgot-password">Forgot password?</RouterLink>
+    </p>
+
+    <p class="auth-form__foot">
+      Don’t have an account?
+      <RouterLink to="/register">Register here</RouterLink>
+    </p>
+  </AuthLayout>
+</template>
+
 <style scoped>
-.login-container {
+.auth-form {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #eef2ff, #f8fafc);
-  font-family: "Inter", sans-serif;
-}
-
-.login-card {
-  background: white;
-  padding: 2.5rem 2.8rem;
-  border-radius: 1.2rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  width: 100%;
-  max-width: 400px;
-  text-align: center;
-}
-
-.title {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.subtitle {
-  color: #64748b;
-  margin-bottom: 2rem;
-  font-size: 1rem;
-}
-
-.form-group {
+  flex-direction: column;
+  gap: var(--space-4);
   text-align: left;
-  margin-bottom: 1.2rem;
 }
 
-label {
-  display: block;
-  font-weight: 600;
-  color: #334155;
-  margin-bottom: 0.4rem;
+.auth-form__error {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
 }
 
-input {
-  width: 100%;
-  padding: 0.7rem 1rem;
-  border-radius: 8px;
-  border: 1.5px solid #cbd5e1;
-  font-size: 1rem;
-  transition: border-color 0.2s ease;
+.auth-form__success {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-size: var(--fs-sm);
+  text-align: left;
 }
 
-input:focus {
-  outline: none;
-  border-color: #3b82f6;
+.auth-form__link {
+  margin-top: var(--space-4);
+  font-size: var(--fs-sm);
 }
 
-.login-btn {
-  width: 100%;
-  background: #3b82f6;
-  color: white;
-  font-weight: 600;
-  border: none;
-  border-radius: 9999px;
-  padding: 0.8rem;
-  margin-top: 0.5rem;
-  cursor: pointer;
-  transition: background 0.25s ease;
-}
-
-.login-btn:hover {
-  background: #2563eb;
-}
-
-.forgot-text {
-  margin-top: 1rem;
-  font-size: 0.9rem;
-}
-
-.forgot-link {
-  color: #3b82f6;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.forgot-link:hover {
-  text-decoration: underline;
-}
-
-.register-text {
-  margin-top: 1.5rem;
-  font-size: 0.95rem;
-  color: #475569;
-}
-
-.register-link {
-  color: #3b82f6;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.register-link:hover {
-  text-decoration: underline;
-}
-
-/* Mobile responsive */
-@media (max-width: 480px) {
-  .login-card {
-    margin: 1.5rem;
-    padding: 2rem 1.8rem;
-  }
-
-  .title {
-    font-size: 1.5rem;
-  }
+.auth-form__foot {
+  margin-top: var(--space-5);
+  font-size: var(--fs-base);
+  color: var(--color-text-muted);
 }
 </style>
