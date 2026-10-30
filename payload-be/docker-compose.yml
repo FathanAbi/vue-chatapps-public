@@ -1,43 +1,71 @@
-version: '3'
-
 services:
   payload:
-    image: node:18-alpine
+    image: node:22-alpine
     ports:
       - '3000:3000'
     volumes:
       - .:/home/node/app
       - node_modules:/home/node/app/node_modules
     working_dir: /home/node/app/
-    command: sh -c "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm dev"
+    # SEC-012: honour the committed lockfile (`npm ci`) so container builds are
+    # reproducible; the previous `pnpm install` discarded it.
+    command: sh -c "npm ci && npm run dev"
     depends_on:
-      - mongo
-      # - postgres
+      mongo:
+        condition: service_healthy
     env_file:
       - .env
+    # SEC-012: run as the unprivileged Node user.
+    user: 'node'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    # SEC-017: bounded, rotated logs instead of `driver: none`.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
 
   # Ensure your DATABASE_URI uses 'mongo' as the hostname ie. mongodb://mongo/my-db-name
   mongo:
-    image: mongo:latest
-    ports:
-      - '27017:27017'
+    image: mongo:7
+    # SEC-012: never publish 27017 to the host. The database is reachable only
+    # on the private Docker network.
+    expose:
+      - '27017'
+    # SEC-012: require authentication.
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-chatadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-me}
     command:
       - --storageEngine=wiredTiger
+      - --bind_ip_all
     volumes:
       - data:/data/db
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mongosh --quiet --eval "db.adminCommand(''ping'')" >/dev/null 2>&1 || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging:
-      driver: none
-
-  # Uncomment the following to use postgres
-  # postgres:
-  #   restart: always
-  #   image: postgres:latest
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
 
 volumes:
   data:
-  # pgdata:
   node_modules:

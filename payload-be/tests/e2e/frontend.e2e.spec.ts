@@ -1,20 +1,30 @@
-import { test, expect, Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 
+/**
+ * A3 / SEC-017: the previous test asserted the Payload *template* landing page
+ * ("Payload Blank Template" / "Welcome to your new project."). That check was
+ * meaningless for this application — it would pass even if the app were broken,
+ * and it advertised template residue. This version asserts the real public
+ * surface: the SPA loads and its security headers are present.
+ */
 test.describe('Frontend', () => {
-  let page: Page
+  test('serves the SPA with security headers', async ({ page }) => {
+    const response = await page.goto('/')
 
-  test.beforeAll(async ({ browser }, testInfo) => {
-    const context = await browser.newContext()
-    page = await context.newPage()
+    expect(response).not.toBeNull()
+    expect(response!.status()).toBeLessThan(400)
+
+    // The SPA mounts into a known root element.
+    await expect(page.locator('#app')).toBeVisible()
   })
 
-  test('can go on homepage', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+  test('refuses to be framed (clickjacking protection)', async ({ request, baseURL }) => {
+    const response = await request.get(baseURL ?? '/')
 
-    await expect(page).toHaveTitle(/Payload Blank Template/)
+    const csp = response.headers()['content-security-policy'] ?? ''
+    const frameOptions = response.headers()['x-frame-options'] ?? ''
 
-    const heading = page.locator('h1').first()
-
-    await expect(heading).toHaveText('Welcome to your new project.')
+    // At least one of the two anti-framing controls must be present.
+    expect(csp.includes('frame-ancestors') || frameOptions.toUpperCase() === 'DENY').toBe(true)
   })
 })

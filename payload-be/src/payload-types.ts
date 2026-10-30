@@ -75,6 +75,7 @@ export interface Config {
     channels: Channel;
     memberships: Membership;
     messages: Message;
+    'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -88,6 +89,7 @@ export interface Config {
     channels: ChannelsSelect<false> | ChannelsSelect<true>;
     memberships: MembershipsSelect<false> | MembershipsSelect<true>;
     messages: MessagesSelect<false> | MessagesSelect<true>;
+    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -95,16 +97,14 @@ export interface Config {
   db: {
     defaultIDType: string;
   };
+  fallbackLocale: null;
   globals: {};
   globalsSelect: {};
   locale: null;
-  user:
-    | (User & {
-        collection: 'users';
-      })
-    | (Pengguna & {
-        collection: 'penggunas';
-      });
+  widgets: {
+    collections: CollectionsWidget;
+  };
+  user: User | Pengguna;
   jobs: {
     tasks: unknown;
     workflows: unknown;
@@ -152,6 +152,7 @@ export interface PenggunaAuthOperations {
  */
 export interface User {
   id: string;
+  roles?: ('admin' | 'user')[] | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -159,6 +160,7 @@ export interface User {
   resetPasswordExpiration?: string | null;
   salt?: string | null;
   hash?: string | null;
+  resetPasswordRequestedAt?: string | null;
   loginAttempts?: number | null;
   lockUntil?: string | null;
   sessions?:
@@ -169,6 +171,7 @@ export interface User {
       }[]
     | null;
   password?: string | null;
+  collection: 'users';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -177,6 +180,15 @@ export interface User {
 export interface Media {
   id: string;
   alt: string;
+  uploadedBy?:
+    | ({
+        relationTo: 'penggunas';
+        value: string | Pengguna;
+      } | null)
+    | ({
+        relationTo: 'users';
+        value: string | User;
+      } | null);
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -186,8 +198,6 @@ export interface Media {
   filesize?: number | null;
   width?: number | null;
   height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -195,7 +205,8 @@ export interface Media {
  */
 export interface Pengguna {
   id: string;
-  username?: string | null;
+  username: string;
+  password?: string | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -203,6 +214,7 @@ export interface Pengguna {
   resetPasswordExpiration?: string | null;
   salt?: string | null;
   hash?: string | null;
+  resetPasswordRequestedAt?: string | null;
   loginAttempts?: number | null;
   lockUntil?: string | null;
   sessions?:
@@ -212,7 +224,7 @@ export interface Pengguna {
         expiresAt: string;
       }[]
     | null;
-  password?: string | null;
+  collection: 'penggunas';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -221,7 +233,7 @@ export interface Pengguna {
 export interface Chat {
   id: string;
   message?: string | null;
-  sender_id?: (string | null) | Pengguna;
+  sender_id: string | Pengguna;
   receiver_id?: (string | null) | Pengguna;
   updatedAt: string;
   createdAt: string;
@@ -259,6 +271,23 @@ export interface Message {
   message: string;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv".
+ */
+export interface PayloadKv {
+  id: string;
+  key: string;
+  data:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -352,6 +381,7 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  roles?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -359,6 +389,7 @@ export interface UsersSelect<T extends boolean = true> {
   resetPasswordExpiration?: T;
   salt?: T;
   hash?: T;
+  resetPasswordRequestedAt?: T;
   loginAttempts?: T;
   lockUntil?: T;
   sessions?:
@@ -375,6 +406,7 @@ export interface UsersSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   alt?: T;
+  uploadedBy?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -384,8 +416,6 @@ export interface MediaSelect<T extends boolean = true> {
   filesize?: T;
   width?: T;
   height?: T;
-  focalX?: T;
-  focalY?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -393,6 +423,7 @@ export interface MediaSelect<T extends boolean = true> {
  */
 export interface PenggunasSelect<T extends boolean = true> {
   username?: T;
+  password?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -400,6 +431,7 @@ export interface PenggunasSelect<T extends boolean = true> {
   resetPasswordExpiration?: T;
   salt?: T;
   hash?: T;
+  resetPasswordRequestedAt?: T;
   loginAttempts?: T;
   lockUntil?: T;
   sessions?:
@@ -454,6 +486,14 @@ export interface MessagesSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-kv_select".
+ */
+export interface PayloadKvSelect<T extends boolean = true> {
+  key?: T;
+  data?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents_select".
  */
 export interface PayloadLockedDocumentsSelect<T extends boolean = true> {
@@ -483,6 +523,16 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collections_widget".
+ */
+export interface CollectionsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'full';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
