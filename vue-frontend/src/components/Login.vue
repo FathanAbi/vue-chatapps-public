@@ -30,6 +30,10 @@
         <button type="submit" class="login-btn">Login</button>
       </form>
 
+      <p class="forgot-text">
+        <RouterLink to="/forgot-password" class="forgot-link">Forgot password?</RouterLink>
+      </p>
+
       <p class="register-text">
         Don’t have an account?
         <RouterLink to="/register" class="register-link">Register here</RouterLink>
@@ -61,13 +65,26 @@ export default {
           }),
         });
 
+        const text = await resp.text();
+        let body = null;
+        try {
+          body = text ? JSON.parse(text) : null;
+        } catch {
+          body = null;
+        }
+
         if (!resp.ok) {
-          const errorMsg = (await resp.json())?.errors?.[0]?.message || "Login failed";
+          const errorMsg = body?.errors?.[0]?.message || `Login failed (${resp.status})`;
           throw new Error(errorMsg);
         }
 
-        const response = await resp.json();
-        console.log(response);
+        if (!body) {
+          throw new Error(
+            "Server returned an empty response. Check VITE_API_URL and that the backend is running.",
+          );
+        }
+
+        console.log(body);
 
         this.$router.push("/dashboard");
       } catch (error) {
@@ -151,6 +168,21 @@ input:focus {
 
 .login-btn:hover {
   background: #2563eb;
+}
+
+.forgot-text {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.forgot-link {
+  color: #3b82f6;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
 }
 
 .register-text {

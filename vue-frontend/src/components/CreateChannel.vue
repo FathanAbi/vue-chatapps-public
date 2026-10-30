@@ -59,7 +59,6 @@
                         },
                         body: JSON.stringify({
                             channel_name: this.name,
-                            owner: this.user_id,
                         })
                     })
 

@@ -109,7 +109,6 @@ import qs from 'qs'
                             "Content-type": "application/json"
                         },
                         body: JSON.stringify({
-                            pengguna_id: this.user_id,
                             channel_id: this.channel_id,
                         })
                     })
@@ -186,8 +185,7 @@ import qs from 'qs'
                             "Content-type": "application/json"
                         },
                         body: JSON.stringify({
-                            pengguna_id: this.user_id,
-                            channel_id: this.channel_id,
+                            Channel: this.channel_id,
                             message: message.value
                         })
                     })

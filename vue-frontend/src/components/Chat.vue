@@ -13,7 +13,7 @@
 
       <div class="chat-partner">
         <h3>Chatting with:</h3>
-        <div class="partner-name">{{ user_username || user_email }}</div>
+        <div class="partner-name">{{ user_username }}</div>
       </div>
 
       <!-- Close sidebar button (mobile) -->
@@ -25,10 +25,15 @@
       <header class="chat-header">
         <!-- Menu toggle for mobile -->
         <button class="menu-toggle" @click="toggleSidebar">☰</button>
-        {{ user_username || user_email }}
+        {{ user_username }}
       </header>
 
       <div class="chat-body" ref="chatBox">
+        <div v-if="hasMore" class="load-older-row">
+          <button class="load-older-btn" @click="loadOlder" :disabled="loadingMore">
+            {{ loadingMore ? 'Loading…' : 'Load older messages' }}
+          </button>
+        </div>
         <div
           v-for="(message, index) in messages"
           :key="index"
@@ -60,6 +65,7 @@
 import { ref, onMounted, nextTick, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import qs from 'qs';
+import { startPolling } from '../utils/polling.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -67,12 +73,18 @@ const router = useRouter();
 const user_id = ref(null);
 const me_id = ref(null);
 const user_username = ref(null);
-const user_email = ref(null);
 const me_username = ref(null);
 const me_email = ref(null);
 const messages = ref([]);
 const messageInput = ref('');
 const chatBox = ref(null);
+
+// B7: message pagination. The initial load fetches the latest page; older
+// messages are appended on demand.
+const PAGE_SIZE = 50;
+const page = ref(1);
+const hasMore = ref(true);
+const loadingMore = ref(false);
 
 // Sidebar state
 const sidebarOpen = ref(false);
@@ -86,7 +98,7 @@ const scrollToBottom = () => {
 // Format message timestamp
 const formatDate = (date) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// Fetch messages
+// Fetch the latest page of messages (used for the initial load and polling)
 const getMessages = async () => {
   if (!me_id.value || !user_id.value) return;
 
@@ -97,7 +109,10 @@ const getMessages = async () => {
     ]
   };
 
-  const stringifiedQuery = qs.stringify({ where: query }, { addQueryPrefix: true });
+  const stringifiedQuery = qs.stringify(
+    { where: query, limit: PAGE_SIZE, page: 1, sort: '-createdAt' },
+    { addQueryPrefix: true }
+  );
 
   try {
     const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/chats${stringifiedQuery}`, { credentials: 'include' });
@@ -108,6 +123,8 @@ const getMessages = async () => {
         sender_id: typeof msg.sender_id === 'object' ? msg.sender_id.id : msg.sender_id
       }))
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    page.value = 1;
+    hasMore.value = Boolean(data.hasNextPage);
     await nextTick();
     scrollToBottom();
   } catch (err) {
@@ -115,14 +132,55 @@ const getMessages = async () => {
   }
 };
 
+// B7: load the next older page and prepend it.
+const loadOlder = async () => {
+  if (!me_id.value || !user_id.value || !hasMore.value || loadingMore.value) return;
+
+  loadingMore.value = true;
+
+  const nextPage = page.value + 1;
+  const query = {
+    or: [
+      { and: [{ sender_id: { equals: me_id.value } }, { receiver_id: { equals: user_id.value } }] },
+      { and: [{ sender_id: { equals: user_id.value } }, { receiver_id: { equals: me_id.value } }] }
+    ]
+  };
+
+  const stringifiedQuery = qs.stringify(
+    { where: query, limit: PAGE_SIZE, page: nextPage, sort: '-createdAt' },
+    { addQueryPrefix: true }
+  );
+
+  try {
+    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/chats${stringifiedQuery}`, { credentials: 'include' });
+    const data = await resp.json();
+
+    const older = data.docs
+      .map(msg => ({
+        ...msg,
+        sender_id: typeof msg.sender_id === 'object' ? msg.sender_id.id : msg.sender_id
+      }))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    messages.value = [...older, ...messages.value];
+    page.value = nextPage;
+    hasMore.value = Boolean(data.hasNextPage);
+  } catch (err) {
+    console.error("Failed to fetch older messages:", err);
+  } finally {
+    loadingMore.value = false;
+  }
+};
+
 // Fetch user info
 const getUserInfo = async () => {
   user_id.value = route.params.user_id;
 
+  // Other users' email addresses are not readable by application users, so the
+  // chat partner is identified by their username only.
   const partnerRes = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/${user_id.value}`, { credentials: 'include' });
   const partnerData = await partnerRes.json();
   user_username.value = partnerData.username;
-  user_email.value = partnerData.email;
 
   const meRes = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/me`, { credentials: 'include' });
   const meData = await meRes.json();
@@ -143,7 +201,6 @@ const sendMessage = async () => {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sender_id: me_id.value,
         receiver_id: user_id.value,
         message: messageInput.value
       })
@@ -161,14 +218,14 @@ const sendMessage = async () => {
   }
 };
 
-// Auto-refresh messages
-let intervalId = null;
+// Auto-refresh messages. B7: exponential backoff + pause while the tab is hidden.
+let stopPolling = null;
 onMounted(async () => {
   await getUserInfo();
-  intervalId = setInterval(getMessages, 4000);
+  stopPolling = startPolling(getMessages, { baseDelay: 4000, maxDelay: 30000 });
 });
 
-onBeforeUnmount(() => clearInterval(intervalId));
+onBeforeUnmount(() => { if (stopPolling) stopPolling(); });
 </script>
 
 <style scoped>

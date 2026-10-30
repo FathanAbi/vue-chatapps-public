@@ -6,6 +6,19 @@
         <h1>Browse User</h1>
     </div>
     <br>
+    <div>
+        <input
+            v-model="search"
+            type="text"
+            placeholder="Search users by username..."
+            @input="onSearch"
+        />
+    </div>
+    <br>
+    <div v-if="!search.trim()" class="hint">
+        Type at least 2 characters to find a user.
+    </div>
+    <div v-else-if="!users?.length" class="hint">No matching users.</div>
     <div v-for="(user, index) in users" :key="index" class="card">
         <div @click="goToChat(user.id)">
             {{ user.username }}
@@ -20,13 +33,30 @@
     export default {
         data(){
             return {
-                users: null,
+                users: [],
+                search: '',
+                searchTimer: null,
             }
         },
         methods: {
+            onSearch(){
+                if (this.searchTimer) clearTimeout(this.searchTimer)
+                this.searchTimer = setTimeout(() => {
+                    this.getUsers()
+                }, 300)
+            },
             async getUsers(){
+                const term = this.search.trim()
+
+                // SEC-013: the directory is search-based and rejects an empty term.
+                if (term.length < 2) {
+                    this.users = []
+                    return
+                }
+
                 try {
-                    const resp = await fetch("http://localhost:3000/api/penggunas", {
+                    const query = new URLSearchParams({ q: term, limit: '25' })
+                    const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/penggunas/directory?${query}`, {
                         method: "GET",
                         credentials: "include",
                         headers: {
@@ -35,19 +65,13 @@
                     });
 
                     if (!resp.ok) {
-                        const errorMsg = (await req.json())?.errors[0].message;
-                        throw new Error(errorMsg);
+                        const errorMsg = (await resp.json())?.errors?.[0]?.message;
+                        throw new Error(errorMsg || resp.statusText);
                     }
 
-                    const response = await resp.json() 
+                    const response = await resp.json()
 
-                    const users = response.docs
-                    
-                    
-                    this.users = users
-                    
-                    
-                    
+                    this.users = response.docs
                 } catch(error) {
                     alert(error.message)
                 }
@@ -58,12 +82,6 @@
             goToChat(user_id){
                 this.$router.push(`/chat/${user_id}`)
             }
-        },
-        mounted(){
-            this.getUsers()
-            .catch(error => {
-                console.log(error)
-            })
         }
     }
 </script>
@@ -76,5 +94,10 @@
   margin: 10px;
   width: 200px;
   text-align: center;
+}
+
+.hint {
+  margin: 10px;
+  color: #6b7280;
 }
 </style>

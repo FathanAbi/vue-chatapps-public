@@ -74,13 +74,26 @@ export default {
           }),
         });
 
+        const text = await resp.text();
+        let body = null;
+        try {
+          body = text ? JSON.parse(text) : null;
+        } catch {
+          body = null;
+        }
+
         if (!resp.ok) {
-          const errorMsg = (await resp.json())?.errors?.[0]?.message || "Registration failed";
+          const errorMsg = body?.errors?.[0]?.message || `Registration failed (${resp.status})`;
           throw new Error(errorMsg);
         }
 
-        const response = await resp.json();
-        console.log(response);
+        if (!body) {
+          throw new Error(
+            "Server returned an empty response. Check VITE_API_URL and that the backend is running.",
+          );
+        }
+
+        console.log(body);
 
         alert("User created successfully!");
         this.$router.push("/login");
